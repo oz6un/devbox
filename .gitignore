@@ -1,3 +1,4 @@
 secrets.env
 *.rendered.yaml
 .DS_Store
+.claude/
