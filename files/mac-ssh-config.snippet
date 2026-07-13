@@ -1,0 +1,7 @@
+# Append to ~/.ssh/config on the Mac (setup-user.sh offers to do this).
+# Auth is Tailscale SSH (tailnet identity) — no keys involved.
+Host devbox
+	User mert
+	ControlMaster auto
+	ControlPath ~/.ssh/cm-%r@%h:%p
+	ControlPersist 10m

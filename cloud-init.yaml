@@ -1,0 +1,215 @@
+#cloud-config
+# Base system for the devbox. Rendered by provision.sh (sed replaces ${TS_AUTHKEY}
+# and ${DEVBOX_NAME}); everything here runs unattended on first boot.
+#
+# Design: this file is the single source of truth for SYSTEM-level state
+# (hardening, firewall, devproxy). USER-level state (fish/tmux/claude for mert)
+# lives in files/ and is applied by setup-user.sh, so it can be re-run to
+# converge drift without rebuilding the server.
+
+hostname: ${DEVBOX_NAME}
+
+package_update: true
+package_upgrade: true
+packages:
+  - fish
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+  - tmux
+  - git
+  - gh
+  - jq
+  - mosh
+  - ripgrep
+  - fd-find
+  - bat
+  - fzf
+  - zoxide
+  - btop
+  - ncdu
+  - tree
+  - unzip
+  - neovim
+  - locales
+  - eza
+  - curl
+  - python3
+
+users:
+  - name: mert
+    groups: sudo
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    # fish isn't installed yet when users are created; runcmd switches the shell.
+    shell: /bin/bash
+    lock_passwd: true
+
+swap:
+  filename: /swapfile
+  size: 2G
+  maxsize: 2G
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    content: |
+      PermitRootLogin prohibit-password
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitEmptyPasswords no
+      MaxAuthTries 3
+      LoginGraceTime 30
+      X11Forwarding no
+
+  - path: /etc/sysctl.d/99-devbox.conf
+    content: |
+      vm.swappiness = 10
+      net.core.default_qdisc = fq
+      net.ipv4.tcp_congestion_control = bbr
+
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+  - path: /etc/apt/apt.conf.d/52-autoreboot.conf
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+
+  - path: /etc/fail2ban/jail.local
+    content: |
+      [sshd]
+      enabled = true
+      backend = systemd
+      maxretry = 5
+      findtime = 10m
+      bantime = 1h
+
+  - path: /etc/profile.d/vite-allowed-hosts.sh
+    content: |
+      # Vite's dev-server host check rejects non-localhost hostnames. This env var
+      # whitelists the tailnet name so http://${DEVBOX_NAME}:<port> works.
+      # FOOTGUN: Vite parses this as EXACTLY ONE host — never a comma list.
+      export __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS="${DEVBOX_NAME}"
+
+  - path: /usr/local/bin/tailnet-devproxy.py
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env python3
+      """Transparent tailnet->localhost proxy. iptables REDIRECTs tailnet TCP here;
+      we recover the original destination port via SO_ORIGINAL_DST and dial localhost.
+      This is what makes http://devbox:<port> reach dev servers bound only to
+      127.0.0.1 or ::1 (plain kernel REDIRECT cannot deliver to loopback binds)."""
+      import asyncio, socket, struct
+
+      SO_ORIGINAL_DST = 80
+      PROXY_PORT = 15100
+
+      async def pipe(reader, writer):
+          try:
+              while True:
+                  data = await reader.read(65536)
+                  if not data:
+                      break
+                  writer.write(data)
+                  await writer.drain()
+          except (ConnectionError, asyncio.CancelledError):
+              pass
+          finally:
+              try:
+                  writer.close()
+              except Exception:
+                  pass
+
+      async def handle(reader, writer):
+          sock = writer.get_extra_info("socket")
+          try:
+              if sock.family == socket.AF_INET:
+                  raw = sock.getsockopt(socket.SOL_IP, SO_ORIGINAL_DST, 16)
+              else:
+                  raw = sock.getsockopt(socket.IPPROTO_IPV6, SO_ORIGINAL_DST, 28)
+              port = struct.unpack("!H", raw[2:4])[0]
+          except OSError:
+              writer.close()
+              return
+          if port == PROXY_PORT:
+              writer.close()
+              return
+          r2 = None
+          for target in ("::1", "127.0.0.1"):
+              try:
+                  r2, w2 = await asyncio.open_connection(target, port)
+                  break
+              except OSError:
+                  r2 = None
+          if r2 is None:
+              writer.close()
+              return
+          await asyncio.gather(pipe(reader, w2), pipe(r2, writer))
+
+      async def main():
+          v4 = await asyncio.start_server(handle, "0.0.0.0", PROXY_PORT, family=socket.AF_INET)
+          s6 = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+          s6.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+          s6.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+          s6.bind(("::", PROXY_PORT))
+          v6 = await asyncio.start_server(handle, sock=s6)
+          async with v4, v6:
+              await asyncio.gather(v4.serve_forever(), v6.serve_forever())
+
+      asyncio.run(main())
+
+  - path: /etc/systemd/system/tailnet-devproxy.service
+    content: |
+      [Unit]
+      Description=Transparent proxy: tailnet TCP -> localhost services
+      After=network.target
+
+      [Service]
+      ExecStart=/usr/bin/python3 /usr/local/bin/tailnet-devproxy.py
+      Restart=always
+      RestartSec=2
+      DynamicUser=yes
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/tailnet-localhost-redirect.service
+    content: |
+      [Unit]
+      Description=Redirect tailnet TCP (unprivileged ports) to the tailnet-devproxy
+      After=network.target
+      Wants=tailnet-devproxy.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/bin/sh -c 'for ipt in iptables ip6tables; do $ipt -t nat -N TAILNET-DEV 2>/dev/null; $ipt -t nat -F TAILNET-DEV; $ipt -t nat -A TAILNET-DEV -p tcp --dport 15100 -j RETURN; $ipt -t nat -A TAILNET-DEV -p tcp --dport 1024:65535 -j REDIRECT --to-ports 15100; $ipt -t nat -C PREROUTING -i tailscale0 -p tcp -j TAILNET-DEV 2>/dev/null || $ipt -t nat -A PREROUTING -i tailscale0 -p tcp -j TAILNET-DEV; done'
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - locale-gen en_US.UTF-8
+  - sysctl --system
+  - chsh -s /usr/bin/fish mert
+  - systemctl restart ssh || true
+  # Join the tailnet unattended. --ssh enables Tailscale SSH (the only SSH path:
+  # no authorized_keys exist anywhere). --operator lets mert run tailscale
+  # commands (serve, status) without sudo.
+  - curl -fsSL https://tailscale.com/install.sh | sh
+  - tailscale up --authkey=${TS_AUTHKEY} --ssh --hostname=${DEVBOX_NAME} --operator=mert
+  # Firewall: public internet sees ONLY tailscale's UDP port. SSH/HTTP/everything
+  # else rides the tailnet (allow in on tailscale0).
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 41641/udp comment 'tailscale direct'
+  - ufw allow in on tailscale0 comment 'tailnet traffic'
+  - ufw --force enable
+  - systemctl daemon-reload
+  - systemctl enable --now tailnet-devproxy.service tailnet-localhost-redirect.service
+  - systemctl enable --now fail2ban unattended-upgrades
+  - systemctl restart fail2ban
+  # Reboot last, only if the package upgrade staged a kernel. Everything above
+  # (tailnet join, firewall, units) is persistent by this point.
+  - '[ -f /var/run/reboot-required ] && reboot || true'
