@@ -46,8 +46,11 @@ users:
   - name: ${DEV_USER}
     groups: sudo
     sudo: "ALL=(ALL) NOPASSWD:ALL"
-    # fish isn't installed yet when users are created; runcmd switches the shell.
-    shell: /bin/bash
+    # Set fish directly here — useradd just records the path in /etc/passwd (it
+    # doesn't require the shell to exist yet; the final-stage package install
+    # provides it before anyone logs in). A `chsh` in runcmd FAILS on this user:
+    # lock_passwd leaves no password, and chsh's PAM stack rejects that.
+    shell: /usr/bin/fish
     lock_passwd: true
 
 swap:
@@ -198,7 +201,6 @@ write_files:
 runcmd:
   - locale-gen en_US.UTF-8
   - sysctl --system
-  - chsh -s /usr/bin/fish ${DEV_USER}
   - usermod -aG docker ${DEV_USER}
   - systemctl restart ssh || true
   # Join the tailnet unattended. --ssh enables Tailscale SSH (the only SSH path:

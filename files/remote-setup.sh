@@ -13,7 +13,10 @@ cp "$S/fnm.fish" ~/.config/fish/conf.d/fnm.fish
 cp "$S/tmux.conf" ~/.tmux.conf
 
 echo "== starship prompt =="
-command -v starship >/dev/null || curl -sS https://starship.rs/install.sh | sh -s -- -y >/dev/null
+# Install to ~/.local/bin (already on PATH via config.fish) — a per-user tool,
+# no sudo. The default /usr/local/bin target makes the installer call sudo,
+# which has no tty over scripted ssh.
+[ -x ~/.local/bin/starship ] || curl -sS https://starship.rs/install.sh | sh -s -- -y -b "$HOME/.local/bin" >/dev/null
 
 echo "== tmux plugins (resurrect/continuum) =="
 [ -d ~/.tmux/plugins/tpm ] || git clone -q https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
