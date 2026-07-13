@@ -1,0 +1,39 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install validators
+        run: sudo apt-get update -qq && sudo apt-get install -yqq shellcheck cloud-init
+
+      - name: Shellcheck
+        run: shellcheck provision.sh setup-user.sh sync-code.sh files/remote-setup.sh
+
+      - name: Bash syntax
+        run: bash -n provision.sh setup-user.sh sync-code.sh files/remote-setup.sh
+
+      - name: Render + validate cloud-init schema
+        run: |
+          sed -e 's|${TS_AUTHKEY}|tskey-auth-dummy|g' -e 's|${DEVBOX_NAME}|devbox|g' \
+            cloud-init.yaml > /tmp/rendered.yaml
+          cloud-init schema --config-file /tmp/rendered.yaml --annotate
+
+      - name: Compile embedded devproxy python
+        run: |
+          python3 - <<'PY'
+          import yaml, py_compile, tempfile, sys
+          doc = yaml.safe_load(open("cloud-init.yaml"))
+          src = next(f["content"] for f in doc["write_files"]
+                     if f["path"].endswith("tailnet-devproxy.py"))
+          with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as f:
+              f.write(src)
+          py_compile.compile(f.name, doraise=True)
+          print("devproxy compiles OK")
+          PY

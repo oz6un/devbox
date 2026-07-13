@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Claude Code hook -> Pushover (phone) + ntfy (desktop). Hook JSON on stdin.
+# Skips pushes when you're actively typing in the tmux session running Claude.
+# Rendered from claude-notify.tmpl by setup-user.sh (placeholders from secrets.env).
+PO_TOKEN="__PUSHOVER_TOKEN__"
+PO_USER="__PUSHOVER_USER__"
+NTFY_TOPIC="__NTFY_TOPIC__"
+PRESENCE_WINDOW=60
+
+payload=$(cat)
+event=$(jq -r '.hook_event_name // "event"' <<<"$payload")
+proj=$(basename "$(jq -r '.cwd // "?"' <<<"$payload")")
+
+# Presence check: if a tmux client on this session saw keyboard input in the
+# last $PRESENCE_WINDOW seconds, the user is at the terminal — stay quiet.
+if [ -n "$TMUX" ] && command -v tmux >/dev/null 2>&1; then
+  sess=$(tmux display-message -p '#{session_name}' 2>/dev/null)
+  last=$(tmux list-clients -t "$sess" -F '#{client_activity}' 2>/dev/null | sort -rn | head -1)
+  if [ -n "$last" ] && [ $(( $(date +%s) - last )) -lt "$PRESENCE_WINDOW" ]; then
+    exit 0
+  fi
+fi
+
+sound=""
+case "$event" in
+  Notification)
+    title="Claude needs input · $proj"
+    body=$(jq -r '.message // "Claude is waiting for you"' <<<"$payload")
+    po_prio=1; nt_prio=high; tags=bell; sound=intermission ;;
+  Stop)
+    title="Claude finished · $proj"
+    body=$(jq -r '.last_assistant_message // empty' <<<"$payload" | tr '\n\t' '  ' | sed 's/  */ /g' | head -c 280)
+    body=${body:-"Turn complete"}
+    po_prio=0; nt_prio=default; tags=white_check_mark ;;
+  StopFailure)
+    title="Claude turn FAILED · $proj"
+    body="The turn ended on an API error (rate limit / server / auth). Check the session."
+    po_prio=1; nt_prio=high; tags=rotating_light; sound=siren ;;
+  *) exit 0 ;;
+esac
+
+if [ -n "$PO_TOKEN" ] && [ "$PO_TOKEN" != "__PUSHOVER_TOKEN__" ]; then
+  po_args=(--form-string "token=$PO_TOKEN" --form-string "user=$PO_USER"
+           --form-string "title=$title" --form-string "message=$body"
+           --form-string "priority=$po_prio")
+  [ -n "$sound" ] && po_args+=(--form-string "sound=$sound")
+  curl -s -o /dev/null --max-time 5 "${po_args[@]}" https://api.pushover.net/1/messages.json || true
+fi
+if [ -n "$NTFY_TOPIC" ] && [ "$NTFY_TOPIC" != "__NTFY_TOPIC__" ]; then
+  curl -s -o /dev/null --max-time 5 -H "Title: $title" -H "Priority: $nt_prio" -H "Tags: $tags" \
+    -d "$body" "https://ntfy.sh/$NTFY_TOPIC" || true
+fi
+exit 0
