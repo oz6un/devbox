@@ -75,6 +75,23 @@ broke something in practice; don't re-learn them.
 
 ## cloud-init (learned auditing this repo)
 
+- **`chsh` in runcmd fails for a `lock_passwd: true` user** — PAM rejects a
+  shell change on an account with no password ("authentication token is no
+  longer valid"). Set the shell in the `users:` block instead (`shell:
+  /usr/bin/fish`); useradd records the path even though fish isn't installed
+  until the final stage — it exists before anyone logs in. (Found by rebuild.)
+- **A per-user tool that installs to `/usr/local/bin` calls `sudo`, which has
+  no tty over scripted ssh** — starship's installer did this and aborted
+  ("a terminal is required"). Install such tools to `~/.local/bin` (already on
+  PATH) with the installer's bin-dir flag; no sudo, matches claude/fnm. NOTE:
+  `sudo -n` (used by the health-timer setup) works fine non-tty — the problem
+  is installers that shell out to bare `sudo`. (Found by rebuild.)
+- **`gh auth login --web` on a box with ANY text browser blocks forever** —
+  its "open browser" step launches the browser (w3m/links pulled in by some
+  package) which then sits on a cookie prompt instead of failing cleanly like
+  a browserless box. Run it as `BROWSER=/usr/bin/true gh auth login …` so the
+  open-step is a no-op and gh proceeds to device-flow polling. (Found by rebuild.)
+
 - **Never put `reboot` in runcmd.** runcmd is NOT the last module; a bare reboot
   interrupts cloud-init mid-final-stage, marks the boot failed, and can re-run
   the whole runcmd on second boot. Use the `power_state` module — it runs dead
