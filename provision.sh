@@ -76,7 +76,7 @@ for i in $(seq 1 60); do
     echo "     (Machines -> $DEVBOX_NAME -> ... -> Disable key expiry) — it is the only SSH path."
     exit 0
   fi
-  [ $((i % 8)) = 0 ] && echo "  ...still waiting (${i}x15s)" || true
+  if [ $((i % 8)) = 0 ]; then echo "  ...still waiting (${i}x15s)"; fi
 done
 
 echo "ERROR: server never became reachable over Tailscale SSH." >&2
