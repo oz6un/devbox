@@ -19,10 +19,13 @@ jobs:
       - name: Bash syntax
         run: bash -n provision.sh setup-user.sh sync-code.sh files/remote-setup.sh
 
+      - name: No personal residue outside LICENSE
+        run: make residue
+
       - name: Render + validate cloud-init schema
         run: |
           sed -e 's|${TS_AUTHKEY}|tskey-auth-dummy|g' -e 's|${DEVBOX_NAME}|devbox|g' \
-            cloud-init.yaml > /tmp/rendered.yaml
+              -e 's|${DEV_USER}|dev|g' cloud-init.yaml > /tmp/rendered.yaml
           cloud-init schema --config-file /tmp/rendered.yaml --annotate
 
       - name: Compile embedded devproxy python

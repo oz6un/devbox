@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs ON the devbox as mert (piped by setup-user.sh). Idempotent.
+# Runs ON the devbox as the dev user (piped by setup-user.sh). Idempotent.
 set -euo pipefail
 S="$HOME/.devbox-setup"
 
@@ -39,7 +39,16 @@ else
   cp "$S/claude-settings.json" ~/.claude/settings.json
 fi
 install -m 700 "$S/claude-notify" ~/.local/bin/claude-notify
-[ -d ~/.claude/skills/ship-loop ] || git clone -q https://github.com/oz6un/ship-loop.git ~/.claude/skills/ship-loop
+# Skills: one git URL per line in $S/claude-skills (from CLAUDE_SKILLS in
+# secrets.env). A bad URL warns and continues — it must not abort the setup.
+while IFS= read -r skill_url; do
+  [ -z "$skill_url" ] && continue
+  name=$(basename "$skill_url" .git)
+  if [ ! -d ~/.claude/skills/"$name" ]; then
+    git clone -q "$skill_url" ~/.claude/skills/"$name" </dev/null 2>/dev/null \
+      || echo "WARN: skill clone failed: $skill_url"
+  fi
+done < "$S/claude-skills"
 
 echo "== git identity =="
 # Identity arrives as files (see setup-user.sh) so no quoting layer ever parses it.
