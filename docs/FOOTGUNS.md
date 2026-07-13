@@ -33,9 +33,9 @@ broke something in practice; don't re-learn them.
 ## Shell / tmux
 
 - **The login shell being fish breaks naive automation:** `ssh devbox '...'`
-  runs fish (mert's shell — and root's too on the original box, though rebuilds
-  deliberately keep root on bash), where `$?`, heredocs-with-bashisms etc.
-  differ. Always `bash -s` / `bash -c` for scripted SSH.
+  runs fish (the dev user's shell — and root's too on the original box, though
+  rebuilds deliberately keep root on bash), where `$?`, heredocs-with-bashisms
+  etc. differ. Always `bash -s` / `bash -c` for scripted SSH.
 - **tmux `run "<tpm path>"` must be per-user.** A config copied from another user
   with an absolute `/root/.tmux/...` path silently loads zero plugins — resurrect
   "works" until the first reboot eats every session. Use `~/.tmux/plugins/tpm/tpm`.
@@ -52,7 +52,7 @@ broke something in practice; don't re-learn them.
 ## Claude Code
 
 - **`--dangerously-skip-permissions` refuses to run as root** — that's the whole
-  reason the `mert` user exists. Keep dev work off root.
+  reason the non-root dev user exists. Keep dev work off root.
 - **Hooks:** `async: true` keeps notifications from delaying turns; `StopFailure`
   is the only signal when a long run dies on a rate limit/API error; the presence
   check (tmux `client_activity`) prevents push spam while you're at the keyboard.
@@ -70,7 +70,7 @@ broke something in practice; don't re-learn them.
   first-match-wins). Set top-level `ssh_pwauth: false` in user-data; a hardening
   drop-in alone is silently defeated.
 - **The `packages:` list is one apt transaction** — a single bad package name
-  skips ALL of them (no ufw, no fail2ban, no fish) while runcmd still runs.
+  skips ALL of them (no ufw, no fish) while runcmd still runs.
   Verify names against noble before adding anything.
 
 ## Reproduction / sync
@@ -80,9 +80,21 @@ broke something in practice; don't re-learn them.
   `DERIVE_WEB_ORIGIN=http://devbox:3090`), the file must live on the Mac —
   that's why `~/Code/derive-to/derive/.env` exists there. Never create config
   only on the box.
+- **Changing `DEV_USER` on an existing setup leaves a stale `Host` block** in
+  the Mac's ~/.ssh/config (setup-user.sh only appends when absent) — update or
+  remove it by hand, or `ssh` silently targets the old user.
 - **Rebuilds change the Tailscale SSH host key** under the same MagicDNS name;
   stale `known_hosts` entries make every connection hard-fail. provision.sh
   runs `ssh-keygen -R` for this; do the same on other machines that connected.
+
+## Deliberately removed (don't re-add reflexively)
+
+- **fail2ban**: with public 22 never open and Tailscale SSH bypassing sshd, it
+  logged 0 failed attempts ever — a permanently idle daemon. Re-add only if you
+  deliberately expose sshd to the internet.
+- **ntfy mirror in claude-notify**: nothing subscribed to the topic after
+  Pushover won; it was a second HTTP call per event to nobody. Single-channel
+  now; ntfy is ~15 lines to re-add if a free/desktop channel is ever wanted.
 
 ## Hetzner
 

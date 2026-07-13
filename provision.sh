@@ -12,11 +12,21 @@ source ./secrets.env
 : "${HCLOUD_TOKEN:?set HCLOUD_TOKEN in secrets.env (Hetzner Cloud API token, read+write)}"
 : "${TS_AUTHKEY:?set TS_AUTHKEY in secrets.env (tailscale pre-auth key, pre-approved, non-reusable)}"
 DEVBOX_NAME="${DEVBOX_NAME:-devbox}"
-# The name lands in sed replacements, YAML, a shell command, and a URL — keep it boring.
+DEV_USER="${DEV_USER:-dev}"
+# These land in sed replacements, YAML, shell commands, and a URL — keep them boring.
 if ! echo "$DEVBOX_NAME" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'; then
   echo "DEVBOX_NAME must be lowercase RFC1123 (letters/digits/hyphens): got '$DEVBOX_NAME'" >&2
   exit 1
 fi
+if ! echo "$DEV_USER" | grep -Eq '^[a-z_][a-z0-9_-]{0,30}$'; then
+  echo "DEV_USER must be a plain unix username (max 31 chars): got '$DEV_USER'" >&2
+  exit 1
+fi
+case "$DEV_USER" in
+  # YAML 1.1 booleans/null parse as non-strings in cloud-init; root collides.
+  on|off|yes|no|true|false|null|root)
+    echo "DEV_USER '$DEV_USER' is reserved (YAML boolean/null or root)." >&2; exit 1 ;;
+esac
 SERVER_TYPE="${SERVER_TYPE:-cx23}"
 LOCATION="${LOCATION:-fsn1}"
 IMAGE="${IMAGE:-ubuntu-24.04}"
@@ -40,7 +50,8 @@ fi
 # Render cloud-init. sed, not envsubst (not on stock macOS). Tailscale auth keys
 # are [A-Za-z0-9-] so they are safe inside a sed replacement.
 user_data=$(sed -e "s|\${TS_AUTHKEY}|$TS_AUTHKEY|g" \
-                -e "s|\${DEVBOX_NAME}|$DEVBOX_NAME|g" cloud-init.yaml)
+                -e "s|\${DEVBOX_NAME}|$DEVBOX_NAME|g" \
+                -e "s|\${DEV_USER}|$DEV_USER|g" cloud-init.yaml)
 
 echo "Creating $SERVER_TYPE '$DEVBOX_NAME' in $LOCATION..."
 payload=$(jq -n --arg name "$DEVBOX_NAME" --arg type "$SERVER_TYPE" \
@@ -62,11 +73,11 @@ echo "tailnet — this takes several minutes (full apt upgrade + possible reboot
 # a stale known_hosts entry would make every probe below hard-fail silently.
 ssh-keygen -R "$DEVBOX_NAME" >/dev/null 2>&1 || true
 
-echo "Waiting for Tailscale SSH as mert@$DEVBOX_NAME (up to 15 min)..."
+echo "Waiting for Tailscale SSH as $DEV_USER@$DEVBOX_NAME (up to 15 min)..."
 for i in $(seq 1 60); do
   sleep 15
   if ssh -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
-       "mert@$DEVBOX_NAME" true 2>/dev/null; then
+       "$DEV_USER@$DEVBOX_NAME" true 2>/dev/null; then
     echo
     echo "✅ $DEVBOX_NAME is up, hardened, and on your tailnet."
     echo "Next steps:"

@@ -1,11 +1,11 @@
 #cloud-config
-# Base system for the devbox. Rendered by provision.sh (sed replaces ${TS_AUTHKEY}
-# and ${DEVBOX_NAME}); everything here runs unattended on first boot.
+# Base system for the devbox. Rendered by provision.sh (sed replaces ${TS_AUTHKEY},
+# ${DEVBOX_NAME} and ${DEV_USER}); everything here runs unattended on first boot.
 #
 # Design: this file is the single source of truth for SYSTEM-level state
-# (hardening, firewall, devproxy). USER-level state (fish/tmux/claude for mert)
-# lives in files/ and is applied by setup-user.sh, so it can be re-run to
-# converge drift without rebuilding the server.
+# (hardening, firewall, devproxy). USER-level state (fish/tmux/claude for the
+# dev user) lives in files/ and is applied by setup-user.sh, so it can be
+# re-run to converge drift without rebuilding the server.
 
 hostname: ${DEVBOX_NAME}
 
@@ -19,7 +19,6 @@ package_upgrade: true
 packages:
   - fish
   - ufw
-  - fail2ban
   - unattended-upgrades
   - tmux
   - git
@@ -42,7 +41,7 @@ packages:
   - python3
 
 users:
-  - name: mert
+  - name: ${DEV_USER}
     groups: sudo
     sudo: "ALL=(ALL) NOPASSWD:ALL"
     # fish isn't installed yet when users are created; runcmd switches the shell.
@@ -80,15 +79,6 @@ write_files:
     content: |
       Unattended-Upgrade::Automatic-Reboot "true";
       Unattended-Upgrade::Automatic-Reboot-Time "04:00";
-
-  - path: /etc/fail2ban/jail.local
-    content: |
-      [sshd]
-      enabled = true
-      backend = systemd
-      maxretry = 5
-      findtime = 10m
-      bantime = 1h
 
   - path: /etc/profile.d/vite-allowed-hosts.sh
     content: |
@@ -197,14 +187,14 @@ write_files:
 runcmd:
   - locale-gen en_US.UTF-8
   - sysctl --system
-  - chsh -s /usr/bin/fish mert
+  - chsh -s /usr/bin/fish ${DEV_USER}
   - systemctl restart ssh || true
   # Join the tailnet unattended. --ssh enables Tailscale SSH (the only SSH path:
-  # no authorized_keys exist anywhere). --operator lets mert run tailscale
-  # commands (serve, status) without sudo. Retry: a transient failure here would
-  # otherwise leave the box unreachable (recovery = Hetzner console pw reset).
+  # no authorized_keys exist anywhere). --operator lets the dev user run
+  # tailscale commands (serve, status) without sudo. Retry: a transient failure
+  # here leaves the box unreachable (recovery = Hetzner console pw reset).
   - curl -fsSL https://tailscale.com/install.sh | sh
-  - for i in 1 2 3; do tailscale up --authkey=${TS_AUTHKEY} --ssh --hostname=${DEVBOX_NAME} --operator=mert && break; sleep 10; done
+  - for i in 1 2 3; do tailscale up --authkey=${TS_AUTHKEY} --ssh --hostname=${DEVBOX_NAME} --operator=${DEV_USER} && break; sleep 10; done
   # Firewall: public internet sees ONLY tailscale's UDP port. SSH/HTTP/everything
   # else rides the tailnet (allow in on tailscale0).
   - ufw default deny incoming
@@ -214,8 +204,7 @@ runcmd:
   - ufw --force enable
   - systemctl daemon-reload
   - systemctl enable --now tailnet-devproxy.service tailnet-localhost-redirect.service
-  - systemctl enable --now fail2ban unattended-upgrades
-  - systemctl restart fail2ban
+  - systemctl enable --now unattended-upgrades
 
 # Reboot only if the upgrade staged one (kernel/libc), via the module built for
 # it: power_state runs dead-last with clean teardown. A bare `reboot` in runcmd

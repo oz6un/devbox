@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/mert/.local/bin/claude-notify",
+            "command": "/home/__DEV_USER__/.local/bin/claude-notify",
             "async": true
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/mert/.local/bin/claude-notify",
+            "command": "/home/__DEV_USER__/.local/bin/claude-notify",
             "async": true
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/mert/.local/bin/claude-notify",
+            "command": "/home/__DEV_USER__/.local/bin/claude-notify",
             "async": true
           }
         ]

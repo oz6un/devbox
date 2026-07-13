@@ -13,12 +13,21 @@ cd "$(dirname "$0")"
 # shellcheck disable=SC1091
 source ./secrets.env
 DEVBOX_NAME="${DEVBOX_NAME:-devbox}"
+DEV_USER="${DEV_USER:-dev}"
 CODE_ROOT="${1:-$HOME/Code}"
 CODE_ROOT="${CODE_ROOT%/}"   # a trailing slash would break every prefix-strip below
 [ -d "$CODE_ROOT" ] || { echo "CODE_ROOT '$CODE_ROOT' is not a directory." >&2; exit 1; }
-# Paths (relative to CODE_ROOT) to skip entirely — workspaces of third-party
-# clones, scratch dirs, anything not worth mirroring.
-EXCLUDE_RE="${SYNC_EXCLUDE_RE:-security_researcher}"
+# Optional regex of paths (relative to CODE_ROOT) to skip entirely — workspaces
+# of third-party clones, scratch dirs, anything not worth mirroring. Empty =
+# exclude nothing (an empty regex must never reach grep: it matches everything).
+EXCLUDE_RE="${SYNC_EXCLUDE_RE:-}"
+# Validate it once: a malformed regex would otherwise fail open on repo
+# exclusion but fail closed (sync nothing) on the env-file list.
+if [ -n "$EXCLUDE_RE" ]; then
+  if ! echo x | { grep -Eq "$EXCLUDE_RE"; [ $? -le 1 ]; }; then
+    echo "SYNC_EXCLUDE_RE is not a valid extended regex: '$EXCLUDE_RE'" >&2; exit 1
+  fi
+fi
 
 manifest=$(mktemp); envlist=$(mktemp)
 trap 'rm -f "$manifest" "$envlist"' EXIT
@@ -30,7 +39,7 @@ echo "== discovering git repos under $CODE_ROOT =="
     -o -name .git \( -type d -o -type f \) -print 2>/dev/null || true; } \
   | while read -r g; do
       d=$(dirname "$g"); rel=${d#"$CODE_ROOT/"}
-      echo "$rel" | grep -Eq "$EXCLUDE_RE" && continue
+      if [ -n "$EXCLUDE_RE" ] && echo "$rel" | grep -Eq "$EXCLUDE_RE"; then continue; fi
       url=$(git -C "$d" remote get-url origin 2>/dev/null) || continue
       # normalize both GitHub ssh forms to https (gh credential helper on the box)
       https=$(echo "$url" \
@@ -52,7 +61,7 @@ echo "  $(wc -l < "$manifest" | tr -d ' ') repos to mirror"
 echo "== cloning on $DEVBOX_NAME (existing clones skipped) =="
 # Remote script is the ssh argument; the manifest rides on stdin. git clone gets
 # </dev/null so it can never eat the manifest lines.
-ssh "mert@$DEVBOX_NAME" 'bash -c '\''
+ssh "$DEV_USER@$DEVBOX_NAME" 'bash -c '\''
   while IFS="|" read -r rel url; do
     [ -z "$rel" ] && continue
     if [ -d "$HOME/Code/$rel/.git" ]; then echo "SKIP $rel"; continue; fi
@@ -66,16 +75,17 @@ echo "== syncing .env files (never overwrites, skips untracked dirs) =="
 { find "$CODE_ROOT" -maxdepth 7 \
     \( -name node_modules -o -name .git -o -name .venv -o -name venv -o -name target -o -name .next \) -prune \
     -o \( -type f -o -type l \) -name ".env*" -print 2>/dev/null || true; } \
-  | sed "s|^$CODE_ROOT/||" | { grep -Ev "$EXCLUDE_RE" || true; } > "$envlist"
+  | sed "s|^$CODE_ROOT/||" \
+  | { if [ -n "$EXCLUDE_RE" ]; then grep -Ev "$EXCLUDE_RE" || true; else cat; fi; } > "$envlist"
 echo "  $(wc -l < "$envlist" | tr -d ' ') env files found"
 
 # Stage 1: ship the tarball (stdin = tar stream).
 # COPYFILE_DISABLE stops macOS bsdtar from shipping AppleDouble (._*) junk.
-COPYFILE_DISABLE=1 tar czf - -C "$CODE_ROOT" -T "$envlist" | ssh "mert@$DEVBOX_NAME" \
+COPYFILE_DISABLE=1 tar czf - -C "$CODE_ROOT" -T "$envlist" | ssh "$DEV_USER@$DEVBOX_NAME" \
   'bash -c "rm -rf ~/.env-staging && mkdir -p ~/.env-staging && tar xzf - -C ~/.env-staging"'
 
 # Stage 2: place files (separate connection; no stdin contention).
-ssh "mert@$DEVBOX_NAME" 'bash -c '\''
+ssh "$DEV_USER@$DEVBOX_NAME" 'bash -c '\''
   cd ~/.env-staging || exit 0
   find . -type f -name "._*" -delete
   find . \( -type f -o -type l \) | sed "s|^\./||" | sort | while read -r rel; do
