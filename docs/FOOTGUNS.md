@@ -19,6 +19,20 @@ broke something in practice; don't re-learn them.
   needs `DERIVE_WEB_ORIGIN=http://devbox:3090` in the repo's `.env` — the Vite proxy
   rewrites `Host`, defeating the API's same-origin rescue.
 
+## Docker
+
+- **Docker bypasses UFW completely.** Published ports ride Docker's own NAT +
+  FORWARD chains and never hit the INPUT chain where UFW lives — `-p 8080:80`
+  is internet-reachable on a default-deny box. Our fix: `/etc/docker/daemon.json`
+  sets `"ip": "127.0.0.1"` so publishes default to loopback (tailnet still
+  reaches them through the devproxy). An explicit `-p 0.0.0.0:8080:80` STILL
+  bypasses everything — never do that here.
+- **The inverse footgun: `ufw enable`/`ufw reload` flushes Docker's FORWARD
+  chains** (filter-table restore without --noflush) — loopback publishes keep
+  working but container egress dies until `systemctl restart docker`. cloud-init
+  orders a docker restart after ufw enable for this; remember it after any
+  manual `ufw reload`.
+
 ## Tailscale
 
 - **`tailscale serve` needs a one-time tailnet enable** (a `login.tailscale.com/f/serve`
