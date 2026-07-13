@@ -2,8 +2,8 @@
 
 # Static gates that run locally (CI runs these plus cloud-init schema validation).
 check: residue
-	shellcheck provision.sh setup-user.sh sync-code.sh files/remote-setup.sh
-	bash -n provision.sh setup-user.sh sync-code.sh files/remote-setup.sh
+	shellcheck provision.sh setup-user.sh sync-code.sh files/remote-setup.sh files/claude-notify.tmpl files/devbox-health.tmpl
+	bash -n provision.sh setup-user.sh sync-code.sh files/remote-setup.sh files/claude-notify.tmpl files/devbox-health.tmpl
 	@echo "check: OK"
 
 provision:

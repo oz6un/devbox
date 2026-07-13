@@ -39,6 +39,8 @@ packages:
   - eza
   - curl
   - python3
+  - docker.io
+  - docker-compose-v2
 
 users:
   - name: ${DEV_USER}
@@ -79,6 +81,15 @@ write_files:
     content: |
       Unattended-Upgrade::Automatic-Reboot "true";
       Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+
+  # Docker publishes ports via its own NAT chains, BYPASSING ufw entirely —
+  # a plain `-p 8080:80` would be internet-reachable despite default-deny.
+  # Defaulting the publish address to loopback closes that hole, and the
+  # tailnet-devproxy makes loopback ports reachable at http://<name>:<port>
+  # from the tailnet anyway. (An explicit `-p 0.0.0.0:...` still bypasses.)
+  - path: /etc/docker/daemon.json
+    content: |
+      { "ip": "127.0.0.1" }
 
   - path: /etc/profile.d/vite-allowed-hosts.sh
     content: |
@@ -188,6 +199,7 @@ runcmd:
   - locale-gen en_US.UTF-8
   - sysctl --system
   - chsh -s /usr/bin/fish ${DEV_USER}
+  - usermod -aG docker ${DEV_USER}
   - systemctl restart ssh || true
   # Join the tailnet unattended. --ssh enables Tailscale SSH (the only SSH path:
   # no authorized_keys exist anywhere). --operator lets the dev user run
@@ -202,6 +214,10 @@ runcmd:
   - ufw allow 41641/udp comment 'tailscale direct'
   - ufw allow in on tailscale0 comment 'tailnet traffic'
   - ufw --force enable
+  # ufw enable restores the filter table WITHOUT --noflush, wiping the FORWARD
+  # chains dockerd installed during package install — container egress would be
+  # dead until dockerd re-adds them. Restarting docker after ufw fixes ordering.
+  - systemctl restart docker
   - systemctl daemon-reload
   - systemctl enable --now tailnet-devproxy.service tailnet-localhost-redirect.service
   - systemctl enable --now unattended-upgrades

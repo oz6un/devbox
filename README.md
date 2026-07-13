@@ -16,6 +16,8 @@ latest versions on rebuild day — configs are pinned, versions are not.
 | Hardening | key-only sshd (defense in depth), unattended-upgrades + 04:00 auto-reboot | Self-patching; nothing listens publicly, so no ban-daemon needed |
 | Sessions | tmux auto-attach on SSH + resurrect/continuum | Survives disconnects *and* the 04:00 patch reboots |
 | Localhost preview | iptables(-nft) REDIRECT → `tailnet-devproxy.py` (SO_ORIGINAL_DST) | `http://devbox:<port>` works even for servers bound to `127.0.0.1`/`::1` |
+| Containers | Docker + Compose, publishes default to `127.0.0.1` | Containers don't face the internet by default (Docker bypasses UFW — see FOOTGUNS); tailnet reaches them via the devproxy |
+| Self-alerting | hourly root timer → Pushover | Pushes only on trouble: disk ≥85% or failed system units, re-alerting hourly until fixed |
 | Notifications | Claude Code hooks → Pushover | Presence-aware; includes StopFailure (API-error) alerts |
 | Recovery | Hetzner rescue mode / console after a root-password reset | No credentials exist on the box — reset via Hetzner first |
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Runs ON the devbox as the dev user (piped by setup-user.sh). Idempotent.
+# Runs ON the devbox as the dev user, executed as a staged FILE by
+# setup-user.sh (never via stdin — the sudo/heredoc blocks below depend on
+# stdin staying free). Idempotent.
 set -euo pipefail
 S="$HOME/.devbox-setup"
 
@@ -49,6 +51,30 @@ while IFS= read -r skill_url; do
       || echo "WARN: skill clone failed: $skill_url"
   fi
 done < "$S/claude-skills"
+
+echo "== health-check timer (root systemd, hourly) =="
+sudo install -m 700 -o root -g root "$S/devbox-health" /usr/local/bin/devbox-health
+sudo tee /etc/systemd/system/devbox-health.service >/dev/null <<'UNIT'
+[Unit]
+Description=Devbox health check -> Pushover
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/devbox-health
+UNIT
+sudo tee /etc/systemd/system/devbox-health.timer >/dev/null <<'UNIT'
+[Unit]
+Description=Hourly devbox health check
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+sudo systemctl daemon-reload
+sudo systemctl enable --now devbox-health.timer >/dev/null
 
 echo "== git identity =="
 # Identity arrives as files (see setup-user.sh) so no quoting layer ever parses it.
