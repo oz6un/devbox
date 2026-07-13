@@ -1,11 +1,34 @@
 # devbox
 
+[![ci](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+
 Reproduces a personal Hetzner development server from zero: a €5.49/mo CX23 in Falkenstein
-that is **tailnet-only** (zero public TCP ports), hardened, and fully kitted for
-development — fish + starship, persistent tmux, Node/pnpm, Claude Code with phone
-notifications, and a transparent proxy that makes `http://devbox:<port>` reach any
-dev server on the box (unprivileged ports, ≥1024). Tools install at their
-latest versions on rebuild day — configs are pinned, versions are not.
+that is **tailnet-only** (zero public TCP ports), hardened, self-patching, and
+**self-alerting** — it pushes to your phone when something's wrong. Fully kitted for
+development: fish + starship, persistent tmux, Node/pnpm, **Docker** (containers can't
+face the internet by default), Claude Code with configurable skills and phone
+notifications, and a transparent proxy that makes `http://devbox:<port>` reach anything
+listening on the box — bare process or container, even bound to localhost (unprivileged
+ports, ≥1024). Tools install at their latest versions on rebuild day — configs are
+pinned, versions are not.
+
+```mermaid
+flowchart LR
+    subgraph T["your tailnet · WireGuard"]
+        M["Mac / iPhone"]
+    end
+    subgraph D["devbox · Hetzner CX23"]
+        TS["tailscaled<br/>Tailscale SSH + net"]
+        P["tailnet-devproxy<br/>:15100"]
+        S["dev servers / containers<br/>bound to localhost"]
+    end
+    I(("public internet"))
+    M -->|"ssh devbox"| TS
+    M -->|"http://devbox:port"| TS
+    TS -->|"REDIRECT tcp 1024-65535"| P
+    P -->|"dials ::1 / 127.0.0.1"| S
+    I -.->|"blocked — UFW default-deny,<br/>only UDP 41641 open"| D
+```
 
 ## Architecture (what you get)
 
@@ -25,7 +48,7 @@ latest versions on rebuild day — configs are pinned, versions are not.
 
 On the Mac: `curl`, `jq`, `git`, `ssh` (all stock), Tailscale running and logged in,
 and — for the code sync — your `~/Code` tree. All knobs (server name, dev user,
-location, skills to install) live in `secrets.env`.
+location, Claude skills to install) live in `secrets.env`.
 
 On the tailnet (hard requirements — provision's wait loop depends on them):
 **MagicDNS on** (`$DEV_USER@devbox` must resolve) and **Tailscale SSH permitted by the
@@ -51,8 +74,27 @@ make sync                            # mirror ~/Code repos + .env files
 | Notification devices | Pushover app + account (keys in secrets.env) | Phone-side app state can't be provisioned from here |
 | Revoke `HCLOUD_TOKEN` | Hetzner console | Nothing needs it after provisioning |
 
-Optional tailnet extra (already enabled here): **Tailscale Serve** for HTTPS
-preview URLs — nothing in this repo depends on it.
+Optional tailnet extra: **Tailscale Serve** for HTTPS preview URLs — one-time enable
+per tailnet; nothing in this repo depends on it.
+
+## Daily use
+
+- **`ssh devbox`** — lands in fish inside a persistent tmux session. Detach `Ctrl-b d`,
+  split `Ctrl-b |` / `Ctrl-b -`, new window `Ctrl-b c`; mouse works, selections land in
+  your Mac clipboard (OSC 52). Sessions survive network drops and the 04:00 reboots
+  (layouts restore; restart long-running programs, `claude --continue` picks up where
+  it left off). `mosh devbox` for flaky networks.
+- **`http://devbox:<port>`** — open any dev server from any tailnet device, no flags,
+  no tunnels; works for localhost-only binds and Docker publishes alike. Need real
+  HTTPS (secure cookies, service workers)? `tailscale serve --bg <port>` →
+  `https://<name>.<tailnet>.ts.net`, `tailscale serve off` when done (no sudo needed).
+- **`docker run -p 8080:80 …`** — publishes bind loopback, so containers are
+  tailnet-visible at `devbox:8080` and invisible to the internet. Never publish with
+  an explicit `-p 0.0.0.0:` (see FOOTGUNS).
+- **`claude` in any repo** — your phone gets a push when it finishes or needs input
+  (suppressed while you're typing in tmux). A push titled **"devbox health: …"** is
+  different: that's the hourly health timer — disk filling up or a failed unit.
+  Investigate promptly.
 
 ## Rebuilding
 
@@ -71,3 +113,7 @@ generate a fresh `TS_AUTHKEY`, then run the three steps above.
 
 See [docs/FOOTGUNS.md](docs/FOOTGUNS.md) before changing anything — every entry
 in that file cost real debugging time.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
