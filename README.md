@@ -4,7 +4,8 @@ Reproduces my Hetzner development server from zero: a €5.49/mo CX23 in Falkens
 that is **tailnet-only** (zero public TCP ports), hardened, and fully kitted for
 development — fish + starship, persistent tmux, Node/pnpm, Claude Code with phone
 notifications, and a transparent proxy that makes `http://devbox:<port>` reach any
-dev server on the box.
+dev server on the box (unprivileged ports, ≥1024). Tools install at their
+latest versions on rebuild day — configs are pinned, versions are not.
 
 ## Architecture (what you get)
 
@@ -13,15 +14,19 @@ dev server on the box.
 | Access | **Tailscale SSH only** (`ssh devbox`, user `mert`) | No SSH keys to manage; auth = tailnet identity; public 22 never opens |
 | Firewall | UFW default-deny; only 41641/udp public | Everything else rides the tailnet interface |
 | Hardening | key-only sshd (defense in depth), fail2ban, unattended-upgrades + 04:00 auto-reboot | Self-patching, brute-force-proof |
-| Sessions | tmux auto-attach on SSH + resurrect/continuum | Survives disconnects *and* the nightly reboots |
-| Localhost preview | nftables REDIRECT → `tailnet-devproxy.py` (SO_ORIGINAL_DST) | `http://devbox:<port>` works even for servers bound to `127.0.0.1`/`::1` |
+| Sessions | tmux auto-attach on SSH + resurrect/continuum | Survives disconnects *and* the 04:00 patch reboots |
+| Localhost preview | iptables(-nft) REDIRECT → `tailnet-devproxy.py` (SO_ORIGINAL_DST) | `http://devbox:<port>` works even for servers bound to `127.0.0.1`/`::1` |
 | Notifications | Claude Code hooks → Pushover (phone) + ntfy (desktop) | Presence-aware; includes StopFailure (API-error) alerts |
-| Recovery | Hetzner console rescue mode | Works with zero credentials on the box |
+| Recovery | Hetzner rescue mode / console after a root-password reset | No credentials exist on the box — reset via Hetzner first |
 
-## Prerequisites (on the Mac)
+## Prerequisites
 
-`curl`, `jq`, `git`, `ssh` (all stock), Tailscale running and logged in, and —
-for the code sync — your `~/Code` tree.
+On the Mac: `curl`, `jq`, `git`, `ssh` (all stock), Tailscale running and logged in,
+and — for the code sync — your `~/Code` tree.
+
+On the tailnet (hard requirements — provision's wait loop depends on them):
+**MagicDNS on** (`mert@devbox` must resolve) and **Tailscale SSH permitted by the
+ACLs** (the default policy allows it). Both are already true for this tailnet.
 
 ## Provision
 
@@ -40,10 +45,11 @@ make sync                            # mirror ~/Code repos + .env files
 | `gh auth login` | on devbox | GitHub device-code flow (gives the box its own revocable token) |
 | `claude` → login | on devbox | Claude subscription OAuth in your browser |
 | Disable key expiry | [Tailscale admin](https://login.tailscale.com/admin/machines) → devbox → ⋯ | Node key otherwise expires in ~180 days, killing the only SSH path |
+| Notification devices | Pushover app (keys in secrets.env) + ntfy topic subscribe | Phone-side app state can't be provisioned from here |
 | Revoke `HCLOUD_TOKEN` | Hetzner console | Nothing needs it after provisioning |
 
-One-time **tailnet-level** settings (already done for this tailnet, survive rebuilds):
-Tailscale SSH allowed by ACLs, MagicDNS on, Serve enabled.
+Optional tailnet extra (already enabled here): **Tailscale Serve** for HTTPS
+preview URLs — nothing in this repo depends on it.
 
 ## Rebuilding
 

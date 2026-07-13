@@ -15,4 +15,9 @@ setup:
 sync:
 	./sync-code.sh
 
-all: provision setup sync
+# Sequential by construction — `make -j all` must not race setup/sync against
+# a server that doesn't exist yet.
+all:
+	$(MAKE) provision
+	$(MAKE) setup
+	$(MAKE) sync

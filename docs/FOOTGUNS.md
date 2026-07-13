@@ -32,9 +32,10 @@ broke something in practice; don't re-learn them.
 
 ## Shell / tmux
 
-- **Root's login shell being fish breaks naive automation:** `ssh devbox '...'`
-  runs fish, where `$?`, heredocs-with-bashisms etc. differ. Always `bash -s` /
-  `bash -c` for scripted SSH.
+- **The login shell being fish breaks naive automation:** `ssh devbox '...'`
+  runs fish (mert's shell — and root's too on the original box, though rebuilds
+  deliberately keep root on bash), where `$?`, heredocs-with-bashisms etc.
+  differ. Always `bash -s` / `bash -c` for scripted SSH.
 - **tmux `run "<tpm path>"` must be per-user.** A config copied from another user
   with an absolute `/root/.tmux/...` path silently loads zero plugins — resurrect
   "works" until the first reboot eats every session. Use `~/.tmux/plugins/tpm/tpm`.
@@ -58,8 +59,35 @@ broke something in practice; don't re-learn them.
 - **pnpm 10 blocks dependency build scripts by default** (`pnpm approve-builds`) —
   a repo may need approval before native modules work.
 
+## cloud-init (learned auditing this repo)
+
+- **Never put `reboot` in runcmd.** runcmd is NOT the last module; a bare reboot
+  interrupts cloud-init mid-final-stage, marks the boot failed, and can re-run
+  the whole runcmd on second boot. Use the `power_state` module — it runs dead
+  last with clean teardown.
+- **Hetzner + no ssh_keys ⇒ cloud-init writes `50-cloud-init.conf` with
+  `PasswordAuthentication yes`, and 50- lexically beats a 99- drop-in** (sshd is
+  first-match-wins). Set top-level `ssh_pwauth: false` in user-data; a hardening
+  drop-in alone is silently defeated.
+- **The `packages:` list is one apt transaction** — a single bad package name
+  skips ALL of them (no ufw, no fail2ban, no fish) while runcmd still runs.
+  Verify names against noble before adding anything.
+
+## Reproduction / sync
+
+- **Box-local `.env` files are invisible to the mirror.** sync-code.sh copies
+  Mac→box only. If a project needs a devbox-specific value (derive's
+  `DERIVE_WEB_ORIGIN=http://devbox:3090`), the file must live on the Mac —
+  that's why `~/Code/derive-to/derive/.env` exists there. Never create config
+  only on the box.
+- **Rebuilds change the Tailscale SSH host key** under the same MagicDNS name;
+  stale `known_hosts` entries make every connection hard-fail. provision.sh
+  runs `ssh-keygen -R` for this; do the same on other machines that connected.
+
 ## Hetzner
 
 - **Servers bill while powered off** — delete (after snapshot) to stop paying.
-- **Rescue mode is the break-glass** for a box with no root password and no SSH
-  keys; it works regardless of what's on the disk.
+- **Rescue mode is the break-glass**, but note: provisioned this way the box has
+  no usable root password (Hetzner returns one in the create response; the
+  script discards it and it's born expired). Console access requires a Hetzner
+  password reset first; rescue mode works regardless.

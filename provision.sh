@@ -6,11 +6,17 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+[ -f ./secrets.env ] || { echo "secrets.env not found — cp secrets.env.example secrets.env and fill it in." >&2; exit 1; }
 # shellcheck disable=SC1091
 source ./secrets.env
 : "${HCLOUD_TOKEN:?set HCLOUD_TOKEN in secrets.env (Hetzner Cloud API token, read+write)}"
 : "${TS_AUTHKEY:?set TS_AUTHKEY in secrets.env (tailscale pre-auth key, pre-approved, non-reusable)}"
 DEVBOX_NAME="${DEVBOX_NAME:-devbox}"
+# The name lands in sed replacements, YAML, a shell command, and a URL — keep it boring.
+if ! echo "$DEVBOX_NAME" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'; then
+  echo "DEVBOX_NAME must be lowercase RFC1123 (letters/digits/hyphens): got '$DEVBOX_NAME'" >&2
+  exit 1
+fi
 SERVER_TYPE="${SERVER_TYPE:-cx23}"
 LOCATION="${LOCATION:-fsn1}"
 IMAGE="${IMAGE:-ubuntu-24.04}"
@@ -51,6 +57,10 @@ for _ in $(seq 1 40); do
 done
 echo "Server is $status. Cloud-init is now installing packages and joining the"
 echo "tailnet — this takes several minutes (full apt upgrade + possible reboot)."
+
+# A rebuilt node generates a fresh SSH host key under the same MagicDNS name;
+# a stale known_hosts entry would make every probe below hard-fail silently.
+ssh-keygen -R "$DEVBOX_NAME" >/dev/null 2>&1 || true
 
 echo "Waiting for Tailscale SSH as mert@$DEVBOX_NAME (up to 15 min)..."
 for i in $(seq 1 60); do

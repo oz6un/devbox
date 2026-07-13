@@ -23,13 +23,14 @@ if [ ! -d ~/.local/share/fnm ]; then
   curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell >/dev/null
 fi
 export PATH="$HOME/.local/share/fnm:$PATH"
-eval "$(fnm env)"
-fnm install 24 >/dev/null 2>&1 || true
+# Explicit shell: fnm autodetection under SHELL=fish could emit fish syntax.
+eval "$(fnm env --shell bash)"
+fnm install 24 >/dev/null   # stderr stays visible — it's the diagnostic on failure
 fnm default 24
 corepack enable 2>/dev/null || true
 
 echo "== claude code =="
-[ -x ~/.local/bin/claude ] || curl -fsSL https://claude.ai/install.sh | bash >/dev/null 2>&1
+[ -x ~/.local/bin/claude ] || curl -fsSL https://claude.ai/install.sh | bash >/dev/null
 mkdir -p ~/.claude/skills
 if [ -f ~/.claude/settings.json ]; then
   jq -s '.[0] * .[1]' ~/.claude/settings.json "$S/claude-settings.json" > ~/.claude/settings.json.tmp \
@@ -41,8 +42,11 @@ install -m 700 "$S/claude-notify" ~/.local/bin/claude-notify
 [ -d ~/.claude/skills/ship-loop ] || git clone -q https://github.com/oz6un/ship-loop.git ~/.claude/skills/ship-loop
 
 echo "== git identity =="
-if [ -n "${GIT_NAME:-}" ]; then git config --global user.name "$GIT_NAME"; fi
-if [ -n "${GIT_EMAIL:-}" ]; then git config --global user.email "$GIT_EMAIL"; fi
+# Identity arrives as files (see setup-user.sh) so no quoting layer ever parses it.
+GIT_NAME=$(cat "$S/git-name" 2>/dev/null || true)
+GIT_EMAIL=$(cat "$S/git-email" 2>/dev/null || true)
+if [ -n "$GIT_NAME" ]; then git config --global user.name "$GIT_NAME"; fi
+if [ -n "$GIT_EMAIL" ]; then git config --global user.email "$GIT_EMAIL"; fi
 git config --global init.defaultBranch main
 
 rm -rf "$S"

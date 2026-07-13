@@ -1,6 +1,7 @@
 {
   "tui": "fullscreen",
   "theme": "dark",
+  "skipDangerousModePermissionPrompt": true,
   "hooks": {
     "Notification": [
       {

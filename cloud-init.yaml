@@ -9,6 +9,11 @@
 
 hostname: ${DEVBOX_NAME}
 
+# Hetzner's vendor config writes 50-cloud-init.conf with PasswordAuthentication yes
+# when no ssh_keys are provisioned, and 50- lexically BEATS our 99- drop-in
+# (sshd is first-match-wins). This top-level key overrides that at the source.
+ssh_pwauth: false
+
 package_update: true
 package_upgrade: true
 packages:
@@ -196,9 +201,10 @@ runcmd:
   - systemctl restart ssh || true
   # Join the tailnet unattended. --ssh enables Tailscale SSH (the only SSH path:
   # no authorized_keys exist anywhere). --operator lets mert run tailscale
-  # commands (serve, status) without sudo.
+  # commands (serve, status) without sudo. Retry: a transient failure here would
+  # otherwise leave the box unreachable (recovery = Hetzner console pw reset).
   - curl -fsSL https://tailscale.com/install.sh | sh
-  - tailscale up --authkey=${TS_AUTHKEY} --ssh --hostname=${DEVBOX_NAME} --operator=mert
+  - for i in 1 2 3; do tailscale up --authkey=${TS_AUTHKEY} --ssh --hostname=${DEVBOX_NAME} --operator=mert && break; sleep 10; done
   # Firewall: public internet sees ONLY tailscale's UDP port. SSH/HTTP/everything
   # else rides the tailnet (allow in on tailscale0).
   - ufw default deny incoming
@@ -210,6 +216,10 @@ runcmd:
   - systemctl enable --now tailnet-devproxy.service tailnet-localhost-redirect.service
   - systemctl enable --now fail2ban unattended-upgrades
   - systemctl restart fail2ban
-  # Reboot last, only if the package upgrade staged a kernel. Everything above
-  # (tailnet join, firewall, units) is persistent by this point.
-  - '[ -f /var/run/reboot-required ] && reboot || true'
+
+# Reboot only if the upgrade staged one (kernel/libc), via the module built for
+# it: power_state runs dead-last with clean teardown. A bare `reboot` in runcmd
+# interrupts cloud-init mid-final-stage and can re-run runcmd on second boot.
+power_state:
+  mode: reboot
+  condition: test -f /var/run/reboot-required
