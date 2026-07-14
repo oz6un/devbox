@@ -9,7 +9,7 @@ manage, wired for Claude Code — and rebuild the whole thing from this repo in 
 - **Tailnet-only.** Zero public TCP ports. Access is Tailscale SSH: your tailnet identity is the credential.
 - **Hardened and self-maintaining.** UFW default-deny, key-only sshd, automatic security patches with a nightly reboot window.
 - **Self-alerting.** Pushes to your phone when the disk fills or a service fails.
-- **Ready for development.** fish + starship, persistent tmux, Node/pnpm, Docker, Claude Code with configurable skills and phone notifications.
+- **Ready for development.** fish + starship, persistent tmux, Node/pnpm, Docker, Claude Code with configurable skills and phone notifications (and OpenAI Codex CLI, optional).
 - **Instant previews.** `http://devbox:<port>` reaches any dev server or container on the box — even one bound to localhost.
 
 ```mermaid
@@ -74,6 +74,7 @@ Three logins happen in your browser and can't be scripted. Do them once per box:
 |---|---|---|
 | `gh auth login` | on devbox | GitHub device flow — gives the box its own revocable token |
 | `claude` → login | on devbox | Claude subscription OAuth |
+| `codex login` → login | on devbox | OpenAI ChatGPT OAuth — only if `INSTALL_CODEX=1` |
 | Disable key expiry | [Tailscale admin](https://login.tailscale.com/admin/machines) → devbox → ⋯ | Keeps the node key (and thus SSH) from expiring in ~180 days |
 
 Set up the Pushover app and account to receive notifications (keys go in `secrets.env`),

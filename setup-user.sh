@@ -45,6 +45,8 @@ sed -e "s|__DEV_USER__|$DEV_USER|g" files/claude-settings.json > "$staging/claud
 printf '%s' "${GIT_NAME:-}" > "$staging/git-name"
 printf '%s' "${GIT_EMAIL:-}" > "$staging/git-email"
 echo "${CLAUDE_SKILLS:-}" | tr ' \t' '\n' | grep -v '^$' > "$staging/claude-skills" || true
+# Normalize the codex opt-in to 0/1 for the remote script.
+case "${INSTALL_CODEX:-0}" in 1|true|yes|on) echo 1 ;; *) echo 0 ;; esac > "$staging/install-codex"
 
 # COPYFILE_DISABLE stops macOS bsdtar from embedding AppleDouble (._*) junk.
 COPYFILE_DISABLE=1 tar czf - -C "$staging" . | ssh "$DEV_USER@$DEVBOX_NAME" \
