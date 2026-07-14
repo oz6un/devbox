@@ -41,6 +41,7 @@ packages:
   - python3
   - docker.io
   - docker-compose-v2
+  # (mosh intentionally absent — it can't bootstrap through Tailscale SSH; see FOOTGUNS)
 
 users:
   - name: ${DEV_USER}
