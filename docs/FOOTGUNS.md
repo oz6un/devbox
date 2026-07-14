@@ -35,6 +35,11 @@ broke something in practice; don't re-learn them.
 
 ## Tailscale
 
+- **A stopped Tailscale client (not the server) shows up as `Could not resolve
+  hostname <name>`.** The Mac dropping off the tailnet — common after sleep —
+  looks identical to a server problem. Check `tailscale status`; `tailscale up`
+  fixes it. `make preflight` now catches this before provisioning.
+
 - **`tailscale serve` needs a one-time tailnet enable** (a `login.tailscale.com/f/serve`
   approval link) — the CLI silently blocks until it's clicked.
 - **Node key expiry must be disabled per node.** Tailscale SSH is the ONLY access

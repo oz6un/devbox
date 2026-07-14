@@ -13,14 +13,9 @@ jobs:
       - name: Install validators
         run: sudo apt-get update -qq && sudo apt-get install -yqq shellcheck cloud-init
 
-      - name: Shellcheck
-        run: shellcheck provision.sh setup-user.sh sync-code.sh files/remote-setup.sh files/claude-notify.tmpl files/devbox-health.tmpl
-
-      - name: Bash syntax
-        run: bash -n provision.sh setup-user.sh sync-code.sh files/remote-setup.sh files/claude-notify.tmpl files/devbox-health.tmpl
-
-      - name: No personal residue outside LICENSE
-        run: make residue
+      # Single source of truth for the file list + residue gate: the Makefile.
+      - name: Static gates (shellcheck, bash -n, residue)
+        run: make check
 
       - name: Render + validate cloud-init schema
         run: |

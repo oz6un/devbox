@@ -57,12 +57,16 @@ ACLs** (the default policy allows it). Verify both for your tailnet (new tailnet
 ## Provision
 
 ```sh
-cp secrets.env.example secrets.env   # fill in HCLOUD_TOKEN + TS_AUTHKEY
+cp secrets.env.example secrets.env   # fill in HCLOUD_TOKEN + TS_AUTHKEY (+ tweak DEV_USER, etc.)
+make preflight                       # validate token/tailnet/authkey BEFORE spending money
 make provision                       # create server; cloud-init hardens + joins tailnet (~5-10 min)
 make setup                           # user env: fish/tmux/node/claude/hooks (idempotent, re-runnable)
 # one-time interactive auth on the box (see below), then:
 make sync                            # mirror ~/Code repos + .env files
 ```
+
+`make provision` runs `preflight` itself, so a missing prerequisite fails in
+seconds instead of a confusing 15-minute timeout after the server already exists.
 
 ## Manual steps (unavoidable — interactive auth)
 
@@ -104,6 +108,17 @@ delete the server in Hetzner, **delete the old node in the Tailscale admin conso
 generate a fresh `TS_AUTHKEY`, then run the three steps above.
 
 `setup-user.sh` is safe to re-run any time to converge config drift on a live box.
+
+## Teardown
+
+```sh
+make destroy                 # delete the Hetzner server (asks you to type the name)
+FORCE=1 make destroy         # skip the prompt;  DRY_RUN=1 make destroy  to preview
+```
+
+Deletes the server (billing stops immediately) and clears the local SSH host key.
+Removing the Tailscale node is the one manual step — the script prints the link;
+skip it and a rebuild registers as `<name>-1`, breaking MagicDNS.
 
 ## What is deliberately NOT here
 

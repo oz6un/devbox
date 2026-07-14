@@ -27,6 +27,10 @@ case "$DEV_USER" in
   on|off|yes|no|true|false|null|root)
     echo "DEV_USER '$DEV_USER' is reserved (YAML boolean/null or root)." >&2; exit 1 ;;
 esac
+
+# Fail fast before spending money: validates token, tailnet, authkey, and that
+# the name is free. Covers the old inline existing-server check and more.
+./preflight.sh || exit 1
 SERVER_TYPE="${SERVER_TYPE:-cx23}"
 LOCATION="${LOCATION:-fsn1}"
 IMAGE="${IMAGE:-ubuntu-24.04}"
@@ -38,14 +42,7 @@ api() {
     "https://api.hetzner.cloud/v1$path"
 }
 
-# Guard: no declarative state here — a second run must not create a twin.
-existing=$(api GET "/servers?name=$DEVBOX_NAME" | jq '.servers | length')
-if [ "$existing" != "0" ]; then
-  echo "ERROR: a server named '$DEVBOX_NAME' already exists in this Hetzner project." >&2
-  echo "This script provisions from scratch; to rebuild, delete the old server (and its" >&2
-  echo "tailnet node in the Tailscale admin console) first." >&2
-  exit 1
-fi
+# (preflight.sh already refused to continue if a server of this name exists.)
 
 # Render cloud-init. sed, not envsubst (not on stock macOS). Tailscale auth keys
 # are [A-Za-z0-9-] so they are safe inside a sed replacement.
