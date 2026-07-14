@@ -55,6 +55,17 @@ while IFS= read -r skill_url; do
   fi
 done < "$S/claude-skills"
 
+# Optional: OpenAI Codex CLI (npm) + bubblewrap (its Linux sandbox). npm is on
+# PATH from the node section above. Auth is a separate one-time `codex login`.
+if [ "$(cat "$S/install-codex" 2>/dev/null)" = 1 ]; then
+  echo "== codex cli (optional) =="
+  command -v codex >/dev/null || npm install -g @openai/codex >/dev/null 2>&1 \
+    || echo "WARN: codex install failed"
+  command -v bwrap >/dev/null \
+    || sudo DEBIAN_FRONTEND=noninteractive apt-get -yq install bubblewrap >/dev/null 2>&1 \
+    || echo "WARN: bubblewrap install failed (codex falls back to a bundled copy)"
+fi
+
 echo "== health-check timer (root systemd, hourly) =="
 sudo install -m 700 -o root -g root "$S/devbox-health" /usr/local/bin/devbox-health
 sudo tee /etc/systemd/system/devbox-health.service >/dev/null <<'UNIT'
