@@ -2,15 +2,15 @@
 
 [![ci](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 
-Reproduces a personal Hetzner development server from zero: a €5.49/mo CX23 in Falkenstein
-that is **tailnet-only** (zero public TCP ports), hardened, self-patching, and
-**self-alerting** — it pushes to your phone when something's wrong. Fully kitted for
-development: fish + starship, persistent tmux, Node/pnpm, **Docker** (containers can't
-face the internet by default), Claude Code with configurable skills and phone
-notifications, and a transparent proxy that makes `http://devbox:<port>` reach anything
-listening on the box — bare process or container, even bound to localhost (unprivileged
-ports, ≥1024). Tools install at their latest versions on rebuild day — configs are
-pinned, versions are not.
+A reproducible, tailnet-only development server on Hetzner Cloud. Go from nothing to a
+hardened €5.49/month box you reach as `ssh devbox` — no public ports, no SSH keys to
+manage, wired for Claude Code — and rebuild the whole thing from this repo in minutes.
+
+- **Tailnet-only.** Zero public TCP ports. Access is Tailscale SSH: your tailnet identity is the credential.
+- **Hardened and self-maintaining.** UFW default-deny, key-only sshd, automatic security patches with a nightly reboot window.
+- **Self-alerting.** Pushes to your phone when the disk fills or a service fails.
+- **Ready for development.** fish + starship, persistent tmux, Node/pnpm, Docker, Claude Code with configurable skills and phone notifications.
+- **Instant previews.** `http://devbox:<port>` reaches any dev server or container on the box — even one bound to localhost.
 
 ```mermaid
 flowchart LR
@@ -30,7 +30,7 @@ flowchart LR
     I -.->|"blocked — UFW default-deny,<br/>only UDP 41641 open"| D
 ```
 
-## Architecture (what you get)
+## Architecture
 
 | Layer | Choice | Why |
 |---|---|---|
@@ -39,95 +39,86 @@ flowchart LR
 | Hardening | key-only sshd (defense in depth), unattended-upgrades + 04:00 auto-reboot | Self-patching; nothing listens publicly, so no ban-daemon needed |
 | Sessions | tmux auto-attach on SSH + resurrect/continuum | Survives disconnects *and* the 04:00 patch reboots |
 | Localhost preview | iptables(-nft) REDIRECT → `tailnet-devproxy.py` (SO_ORIGINAL_DST) | `http://devbox:<port>` works even for servers bound to `127.0.0.1`/`::1` |
-| Containers | Docker + Compose, publishes default to `127.0.0.1` | Containers don't face the internet by default (Docker bypasses UFW — see FOOTGUNS); tailnet reaches them via the devproxy |
-| Self-alerting | hourly root timer → Pushover | Pushes only on trouble: disk ≥85% or failed system units, re-alerting hourly until fixed |
-| Notifications | Claude Code hooks → Pushover | Presence-aware; includes StopFailure (API-error) alerts |
-| Recovery | Hetzner rescue mode / console after a root-password reset | No credentials exist on the box — reset via Hetzner first |
+| Containers | Docker + Compose, publishes default to `127.0.0.1` | Containers stay off the internet (Docker bypasses UFW — see FOOTGUNS); the tailnet reaches them via the devproxy |
+| Self-alerting | hourly root timer → Pushover | Pushes only on trouble: disk ≥85% or a failed unit, repeating hourly until fixed |
+| Notifications | Claude Code hooks → Pushover | Presence-aware; includes turn-failure alerts |
+| Recovery | Hetzner rescue mode / console | No credentials live on the box; reset root via Hetzner if ever needed |
 
 ## Prerequisites
 
-On the Mac: `curl`, `jq`, `git`, `ssh` (all stock), Tailscale running and logged in,
-and — for the code sync — your `~/Code` tree. All knobs (server name, dev user,
-location, Claude skills to install) live in `secrets.env`.
+**On your machine:** `curl`, `jq`, `git`, `ssh` (all stock), plus Tailscale running and
+logged in. For the code sync, your `~/Code` tree. Every knob — server name, dev user,
+location, Claude skills — lives in `secrets.env`.
 
-On the tailnet (hard requirements — provision's wait loop depends on them):
-**MagicDNS on** (`$DEV_USER@devbox` must resolve) and **Tailscale SSH permitted by the
-ACLs** (the default policy allows it). Verify both for your tailnet (new tailnets have them by default).
+**On your tailnet:** MagicDNS on (so `$DEV_USER@devbox` resolves) and Tailscale SSH
+allowed by your ACLs. Both are on by default for new tailnets; `make preflight` checks them.
 
-## Provision
+## Quick start
 
 ```sh
-cp secrets.env.example secrets.env   # fill in HCLOUD_TOKEN + TS_AUTHKEY (+ tweak DEV_USER, etc.)
-make preflight                       # validate token/tailnet/authkey BEFORE spending money
-make provision                       # create server; cloud-init hardens + joins tailnet (~5-10 min)
-make setup                           # user env: fish/tmux/node/claude/hooks (idempotent, re-runnable)
-# one-time interactive auth on the box (see below), then:
-make sync                            # mirror ~/Code repos + .env files
+cp secrets.env.example secrets.env   # fill in HCLOUD_TOKEN + TS_AUTHKEY, tweak DEV_USER etc.
+make preflight                       # validate token, tailnet, and name before spending anything
+make provision                       # create the server; cloud-init hardens it and joins the tailnet (~5-10 min)
+make setup                           # user environment: fish, tmux, Node, Claude Code, hooks (idempotent)
+make sync                            # mirror ~/Code repos and .env files (after the one-time auth below)
 ```
 
-`make provision` runs `preflight` itself, so a missing prerequisite fails in
-seconds instead of a confusing 15-minute timeout after the server already exists.
+`make provision` runs `preflight` first, so a missing prerequisite stops you in seconds
+rather than partway through a paid server.
 
-## Manual steps (unavoidable — interactive auth)
+## One-time authentication
 
-| Step | Where | Why it can't be automated |
+Three logins happen in your browser and can't be scripted. Do them once per box:
+
+| Step | Where | What it does |
 |---|---|---|
-| `gh auth login` | on devbox | GitHub device-code flow (gives the box its own revocable token) |
-| `claude` → login | on devbox | Claude subscription OAuth in your browser |
-| Disable key expiry | [Tailscale admin](https://login.tailscale.com/admin/machines) → devbox → ⋯ | Node key otherwise expires in ~180 days, killing the only SSH path |
-| Notification devices | Pushover app + account (keys in secrets.env) | Phone-side app state can't be provisioned from here |
-| Revoke `HCLOUD_TOKEN` | Hetzner console | Nothing needs it after provisioning |
+| `gh auth login` | on devbox | GitHub device flow — gives the box its own revocable token |
+| `claude` → login | on devbox | Claude subscription OAuth |
+| Disable key expiry | [Tailscale admin](https://login.tailscale.com/admin/machines) → devbox → ⋯ | Keeps the node key (and thus SSH) from expiring in ~180 days |
 
-Optional tailnet extra: **Tailscale Serve** for HTTPS preview URLs — one-time enable
-per tailnet; nothing in this repo depends on it.
+Set up the Pushover app and account to receive notifications (keys go in `secrets.env`),
+and revoke `HCLOUD_TOKEN` from the Hetzner console once you're done provisioning.
+
+Optional: enable **Tailscale Serve** on your tailnet for HTTPS preview URLs — nothing here depends on it.
 
 ## Daily use
 
-- **`ssh devbox`** — lands in fish inside a persistent tmux session. Detach `Ctrl-b d`,
-  split `Ctrl-b |` / `Ctrl-b -`, new window `Ctrl-b c`; mouse works, selections land in
-  your Mac clipboard (OSC 52). Sessions survive network drops and the 04:00 reboots
-  (layouts restore; restart long-running programs, `claude --continue` picks up where
-  it left off). `mosh devbox` for flaky networks.
-- **`http://devbox:<port>`** — open any dev server from any tailnet device, no flags,
-  no tunnels; works for localhost-only binds and Docker publishes alike. Need real
-  HTTPS (secure cookies, service workers)? `tailscale serve --bg <port>` →
-  `https://<name>.<tailnet>.ts.net`, `tailscale serve off` when done (no sudo needed).
-- **`docker run -p 8080:80 …`** — publishes bind loopback, so containers are
-  tailnet-visible at `devbox:8080` and invisible to the internet. Never publish with
-  an explicit `-p 0.0.0.0:` (see FOOTGUNS).
-- **`claude` in any repo** — your phone gets a push when it finishes or needs input
-  (suppressed while you're typing in tmux). A push titled **"devbox health: …"** is
-  different: that's the hourly health timer — disk filling up or a failed unit.
-  Investigate promptly.
+- **`ssh devbox`** lands you in fish inside a persistent tmux session. Detach with `Ctrl-b d`,
+  split with `Ctrl-b |` / `Ctrl-b -`, new window with `Ctrl-b c`. Mouse works and selections
+  copy to your local clipboard. Sessions survive network drops and the nightly reboot — layouts
+  restore, and `claude --continue` resumes a conversation. Use `mosh devbox` on flaky networks.
+- **`http://devbox:<port>`** opens any dev server from any tailnet device — no flags, no tunnels —
+  including localhost-only binds and Docker publishes. For HTTPS (secure cookies, service workers),
+  run `tailscale serve --bg <port>` for `https://<name>.<tailnet>.ts.net`, and `tailscale serve off` when done.
+- **`docker run -p 8080:80 …`** publishes to loopback, so containers are reachable at `devbox:8080`
+  over the tailnet and invisible to the internet. Publishing to `0.0.0.0` bypasses this — see FOOTGUNS.
+- **`claude` in any repo** pushes to your phone when it finishes or needs input (and stays quiet
+  while you're typing in tmux). A **"devbox health"** push is the hourly monitor flagging low disk
+  or a failed unit.
 
-## Rebuilding
-
-`provision.sh` refuses to run if a server named `$DEVBOX_NAME` exists. To rebuild:
-delete the server in Hetzner, **delete the old node in the Tailscale admin console**
-(otherwise the new node becomes `devbox-1` and every `devbox` reference breaks),
-generate a fresh `TS_AUTHKEY`, then run the three steps above.
-
-`setup-user.sh` is safe to re-run any time to converge config drift on a live box.
-
-## Teardown
+## Rebuild and teardown
 
 ```sh
-make destroy                 # delete the Hetzner server (asks you to type the name)
-FORCE=1 make destroy         # skip the prompt;  DRY_RUN=1 make destroy  to preview
+make destroy                 # delete the server (prompts for the name); billing stops immediately
+FORCE=1 make destroy         # skip the prompt      ·      DRY_RUN=1 make destroy   to preview
 ```
 
-Deletes the server (billing stops immediately) and clears the local SSH host key.
-Removing the Tailscale node is the one manual step — the script prints the link;
-skip it and a rebuild registers as `<name>-1`, breaking MagicDNS.
+`destroy` deletes the Hetzner server and clears the local SSH host key. Removing the Tailscale
+node is the one manual step — the script prints the link. Skip it and a rebuild registers as
+`<name>-1`, which breaks MagicDNS.
 
-## What is deliberately NOT here
+To rebuild: `make destroy`, remove the tailnet node, generate a fresh `TS_AUTHKEY`, then run the
+quick start again. `make setup` is also safe to re-run any time to converge config drift on a live box.
 
-- **Hetzner backups** — decide per-rebuild (+20% ≈ €1.10/mo, one API call or console toggle).
-- **Project data** (databases, `./data` dirs) — repos and `.env` files are mirrored; runtime state is not.
-- **Claude/gh credentials** — each box gets fresh, independently-revocable logins.
+## Not included, by design
 
-See [docs/FOOTGUNS.md](docs/FOOTGUNS.md) before changing anything — every entry
-in that file cost real debugging time.
+- **Hetzner backups** — a per-box billing decision (+20%, one API call or console toggle).
+- **Project data** — repos and `.env` files are mirrored; databases and runtime state are not.
+- **Shared credentials** — every box gets its own GitHub and Claude logins, revocable independently.
+
+## More
+
+- [docs/FOOTGUNS.md](docs/FOOTGUNS.md) — the non-obvious behaviors and the reasoning behind each design choice.
 
 ## License
 
