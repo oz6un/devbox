@@ -131,6 +131,16 @@ broke something in practice; don't re-learn them.
 - **ntfy mirror in claude-notify**: nothing subscribed to the topic after
   Pushover won; it was a second HTTP call per event to nobody. Single-channel
   now; ntfy is ~15 lines to re-add if a free/desktop channel is ever wanted.
+- **mosh**: can't bootstrap through **Tailscale SSH** — `tailscaled` swallows all
+  TCP :22 packets after WireGuard decryption and never hands them to the kernel's
+  sshd, and mosh needs a *real* OpenSSH server to launch `mosh-server`. Verified
+  end-to-end (SSH auth + `mosh-server` + bidirectional UDP all work, yet the mosh
+  handshake fails on both a Mac and a phone) — see Tailscale issue #4919. Not a
+  firewall or locale problem; the design is fundamentally incompatible. tmux
+  already covers session survival (and survives reboots, which mosh can't). To
+  actually get mosh, run classic OpenSSH on a non-22 port (tailscaled owns 22) +
+  a device key, and point the client's mosh at that port — an opt-in worth adding
+  only if someone genuinely wants the instant-echo feel.
 
 ## Hetzner
 

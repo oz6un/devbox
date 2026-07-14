@@ -87,7 +87,8 @@ Optional: enable **Tailscale Serve** on your tailnet for HTTPS preview URLs — 
 - **`ssh devbox`** lands you in fish inside a persistent tmux session. Detach with `Ctrl-b d`,
   split with `Ctrl-b |` / `Ctrl-b -`, new window with `Ctrl-b c`. Mouse works and selections
   copy to your local clipboard. Sessions survive network drops and the nightly reboot — layouts
-  restore, and `claude --continue` resumes a conversation. Use `mosh devbox` on flaky networks.
+  restore, and `claude --continue` resumes a conversation. tmux is what makes reconnecting
+  seamless; if your client drops, reconnect and you're back exactly where you were.
 - **`http://devbox:<port>`** opens any dev server from any tailnet device — no flags, no tunnels —
   including localhost-only binds and Docker publishes. For HTTPS (secure cookies, service workers),
   run `tailscale serve --bg <port>` for `https://<name>.<tailnet>.ts.net`, and `tailscale serve off` when done.
