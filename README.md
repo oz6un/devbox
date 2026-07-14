@@ -85,7 +85,9 @@ Optional: enable **Tailscale Serve** on your tailnet for HTTPS preview URLs — 
 ## Daily use
 
 - **`ssh devbox`** lands you in fish inside a persistent tmux session. Detach with `Ctrl-b d`,
-  split with `Ctrl-b |` / `Ctrl-b -`, new window with `Ctrl-b c`. Mouse works and selections
+  split with `Ctrl-b |` / `Ctrl-b -`, new window with `Ctrl-b c`. On a phone (Termius etc.),
+  the status bar is touch: **tap a window name to switch**, tap **`[+]`** for a new window, tap
+  **`[x]`** to close one — no modifier keys. Mouse works and selections
   copy to your local clipboard. Sessions survive network drops and the nightly reboot — layouts
   restore, and `claude --continue` resumes a conversation. tmux is what makes reconnecting
   seamless; if your client drops, reconnect and you're back exactly where you were.
