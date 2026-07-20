@@ -96,9 +96,11 @@ Optional: enable **Tailscale Serve** on your tailnet for HTTPS preview URLs — 
   run `tailscale serve --bg <port>` for `https://<name>.<tailnet>.ts.net`, and `tailscale serve off` when done.
 - **`docker run -p 8080:80 …`** publishes to loopback, so containers are reachable at `devbox:8080`
   over the tailnet and invisible to the internet. Publishing to `0.0.0.0` bypasses this — see FOOTGUNS.
-- **`claude` in any repo** pushes to your phone when it finishes or needs input (and stays quiet
-  while you're typing in tmux). A **"devbox health"** push is the hourly monitor flagging low disk
-  or a failed unit.
+- **`claude` in any repo** pushes to your phone only when it's genuinely waiting on you — idle
+  after handing control back, or blocked on a decision — plus turn failures. It deliberately does
+  *not* ping on every completed turn (that floods during autonomous multi-step work), and stays
+  quiet while you're active in tmux. A **"devbox health"** push is the hourly monitor flagging low
+  disk or a failed unit.
 
 ## Rebuild and teardown
 

@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Claude Code hook -> Pushover push notifications. Hook JSON on stdin.
-# Skips pushes when you're actively typing in the tmux session running Claude.
+# Pushes ONLY when Claude genuinely needs you — it's idle waiting for your next
+# prompt, or blocked on a permission — or a turn errored. It deliberately does
+# NOT fire on Stop: Stop runs once per turn and has no field distinguishing
+# "done, over to you" from "stopped mid-workflow, resuming" (confirmed via the
+# hooks docs), so during autonomous multi-step work it floods you with a push
+# per intermediate turn. `idle_prompt` is the real "handed control back to you"
+# signal and self-filters those intermediate stops.
+# Also skips pushes while you're active at the tmux session.
 # Rendered from claude-notify.tmpl by setup-user.sh (placeholders from secrets.env).
 PO_TOKEN="__PUSHOVER_TOKEN__"
 PO_USER="__PUSHOVER_USER__"
@@ -8,6 +15,7 @@ PRESENCE_WINDOW=60
 
 payload=$(cat)
 event=$(jq -r '.hook_event_name // "event"' <<<"$payload")
+ntype=$(jq -r '.notification_type // empty' <<<"$payload")
 proj=$(basename "$(jq -r '.cwd // "?"' <<<"$payload")")
 
 # Presence check: if a tmux client on this session saw keyboard input in the
@@ -23,14 +31,17 @@ fi
 sound=""
 case "$event" in
   Notification)
-    title="Claude needs input · $proj"
+    # Denylist the pure-noise sub-types (login confirmations, MCP form
+    # internals); everything else pushes — notably idle_prompt (Claude waiting
+    # on you), permission_prompt, agent_needs_input, elicitation_dialog. Using a
+    # denylist (not an allowlist) means a missing/renamed notification_type
+    # fails LOUD (still pushes) rather than silently swallowing every alert.
+    case "$ntype" in
+      auth_success|elicitation_complete|elicitation_response) exit 0 ;;
+    esac
+    title="Claude needs you · $proj"
     body=$(jq -r '.message // "Claude is waiting for you"' <<<"$payload")
     po_prio=1; sound=intermission ;;
-  Stop)
-    title="Claude finished · $proj"
-    body=$(jq -r '.last_assistant_message // empty' <<<"$payload" | tr '\n\t' '  ' | sed 's/  */ /g' | head -c 280)
-    body=${body:-"Turn complete"}
-    po_prio=0 ;;
   StopFailure)
     title="Claude turn FAILED · $proj"
     body="The turn ended on an API error (rate limit / server / auth). Check the session."
