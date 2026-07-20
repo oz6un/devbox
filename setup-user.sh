@@ -11,8 +11,8 @@ source ./secrets.env
 DEVBOX_NAME="${DEVBOX_NAME:-devbox}"
 DEV_USER="${DEV_USER:-dev}"
 
-# Pushover keys render into a ROOT-executed script (devbox-health); real keys
-# are alphanumeric, so enforce exactly that — kills the injection class.
+# Pushover keys render (via sed) into the claude-notify hook; real keys are
+# alphanumeric, so enforce exactly that — keeps the render clean and safe.
 for v in PUSHOVER_TOKEN PUSHOVER_USER; do
   val="${!v:-}"
   if [ -n "$val" ] && ! echo "$val" | grep -Eq '^[A-Za-z0-9]+$'; then
@@ -37,9 +37,6 @@ cp files/config.fish files/tmux.conf files/fnm.fish files/remote-setup.sh "$stag
 sed -e "s|__PUSHOVER_TOKEN__|${PUSHOVER_TOKEN:-}|g" \
     -e "s|__PUSHOVER_USER__|${PUSHOVER_USER:-}|g" \
     files/claude-notify.tmpl > "$staging/claude-notify"
-sed -e "s|__PUSHOVER_TOKEN__|${PUSHOVER_TOKEN:-}|g" \
-    -e "s|__PUSHOVER_USER__|${PUSHOVER_USER:-}|g" \
-    files/devbox-health.tmpl > "$staging/devbox-health"
 sed -e "s|__DEVBOX_NAME__|$DEVBOX_NAME|g" files/vite-hosts.fish > "$staging/vite-hosts.fish"
 sed -e "s|__DEV_USER__|$DEV_USER|g" files/claude-settings.json > "$staging/claude-settings.json"
 printf '%s' "${GIT_NAME:-}" > "$staging/git-name"
