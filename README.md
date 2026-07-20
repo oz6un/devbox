@@ -8,7 +8,6 @@ manage, wired for Claude Code — and rebuild the whole thing from this repo in 
 
 - **Tailnet-only.** Zero public TCP ports. Access is Tailscale SSH: your tailnet identity is the credential.
 - **Hardened and self-maintaining.** UFW default-deny, key-only sshd, automatic security patches with a nightly reboot window.
-- **Self-alerting.** Pushes to your phone when the disk fills or a service fails.
 - **Ready for development.** fish + starship, persistent tmux, Node/pnpm, Docker, Claude Code with configurable skills and phone notifications (and OpenAI Codex CLI, optional).
 - **Instant previews.** `http://devbox:<port>` reaches any dev server or container on the box — even one bound to localhost.
 
@@ -40,8 +39,7 @@ flowchart LR
 | Sessions | tmux auto-attach on SSH + resurrect/continuum | Survives disconnects *and* the 04:00 patch reboots |
 | Localhost preview | iptables(-nft) REDIRECT → `tailnet-devproxy.py` (SO_ORIGINAL_DST) | `http://devbox:<port>` works even for servers bound to `127.0.0.1`/`::1` |
 | Containers | Docker + Compose, publishes default to `127.0.0.1` | Containers stay off the internet (Docker bypasses UFW — see FOOTGUNS); the tailnet reaches them via the devproxy |
-| Self-alerting | hourly root timer → Pushover | Pushes only on trouble: disk ≥85% or a failed unit, repeating hourly until fixed |
-| Notifications | Claude Code hooks → Pushover | Presence-aware; includes turn-failure alerts |
+| Notifications | Claude Code hooks → Pushover | Presence-aware; pushes only when Claude is waiting on you or a turn failed |
 | Recovery | Hetzner rescue mode / console | No credentials live on the box; reset root via Hetzner if ever needed |
 
 ## Prerequisites
@@ -99,8 +97,7 @@ Optional: enable **Tailscale Serve** on your tailnet for HTTPS preview URLs — 
 - **`claude` in any repo** pushes to your phone only when it's genuinely waiting on you — idle
   after handing control back, or blocked on a decision — plus turn failures. It deliberately does
   *not* ping on every completed turn (that floods during autonomous multi-step work), and stays
-  quiet while you're active in tmux. A **"devbox health"** push is the hourly monitor flagging low
-  disk or a failed unit.
+  quiet while you're active in tmux.
 
 ## Rebuild and teardown
 

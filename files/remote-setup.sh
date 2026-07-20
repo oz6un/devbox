@@ -66,30 +66,6 @@ if [ "$(cat "$S/install-codex" 2>/dev/null)" = 1 ]; then
     || echo "WARN: bubblewrap install failed (codex falls back to a bundled copy)"
 fi
 
-echo "== health-check timer (root systemd, hourly) =="
-sudo install -m 700 -o root -g root "$S/devbox-health" /usr/local/bin/devbox-health
-sudo tee /etc/systemd/system/devbox-health.service >/dev/null <<'UNIT'
-[Unit]
-Description=Devbox health check -> Pushover
-Wants=network-online.target
-After=network-online.target
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/devbox-health
-UNIT
-sudo tee /etc/systemd/system/devbox-health.timer >/dev/null <<'UNIT'
-[Unit]
-Description=Hourly devbox health check
-[Timer]
-OnCalendar=hourly
-RandomizedDelaySec=300
-Persistent=true
-[Install]
-WantedBy=timers.target
-UNIT
-sudo systemctl daemon-reload
-sudo systemctl enable --now devbox-health.timer >/dev/null
-
 echo "== git identity =="
 # Identity arrives as files (see setup-user.sh) so no quoting layer ever parses it.
 GIT_NAME=$(cat "$S/git-name" 2>/dev/null || true)
