@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# OpenAI Codex CLI notify program -> Pushover push notifications.
+# Wired via `notify = ["<this script>"]` in ~/.codex/config.toml. Codex passes
+# the event JSON as the FINAL ARGV argument (not stdin), and currently emits
+# only "agent-turn-complete" — there is no idle/error/needs-input event to
+# filter on (unlike Claude Code's hooks), so this pushes when Codex hands a
+# turn back to you. That's the genuine "over to you" moment; Codex does not
+# flood with intermediate stops. Presence-suppressed while you're active in the
+# tmux session, exactly like the Claude hook.
+# Rendered from codex-notify.tmpl by setup-user.sh (placeholders from secrets.env).
+PO_TOKEN="__PUSHOVER_TOKEN__"
+PO_USER="__PUSHOVER_USER__"
+PRESENCE_WINDOW=60
+
+# Codex hands the payload as the last argument; fall back to stdin if a future
+# version ever switches, so we don't go silently dead.
+payload="${1:-}"
+[ -z "$payload" ] && payload=$(cat 2>/dev/null)
+[ -z "$payload" ] && exit 0
+
+type=$(jq -r '.type // empty' <<<"$payload" 2>/dev/null)
+[ "$type" = "agent-turn-complete" ] || exit 0
+
+# Codex's payload carries the project dir and the message it ended on.
+proj=$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null); proj=$(basename "${proj:-$PWD}")
+body=$(jq -r '."last-assistant-message" // empty' <<<"$payload" 2>/dev/null | tr '\n\t' '  ' | sed 's/  */ /g' | head -c 280)
+body=${body:-"Turn complete — over to you"}
+
+# Presence check: if a tmux client on this session saw activity in the last
+# $PRESENCE_WINDOW seconds, you're at the terminal — stay quiet.
+if [ -n "$TMUX" ] && command -v tmux >/dev/null 2>&1; then
+  sess=$(tmux display-message -p '#{session_name}' 2>/dev/null)
+  last=$(tmux list-clients -t "$sess" -F '#{client_activity}' 2>/dev/null | sort -rn | head -1)
+  if [ -n "$last" ] && [ $(( $(date +%s) - last )) -lt "$PRESENCE_WINDOW" ]; then
+    exit 0
+  fi
+fi
+
+# The split literal keeps the render sed from rewriting this guard (see the
+# Claude hook for the full explanation).
+if [ -n "$PO_TOKEN" ] && [ "$PO_TOKEN" != "__PUSHOVER""_TOKEN__" ]; then
+  curl -s -o /dev/null --max-time 5 \
+    --form-string "token=$PO_TOKEN" --form-string "user=$PO_USER" \
+    --form-string "title=Codex · $proj" --form-string "message=$body" \
+    --form-string "priority=1" --form-string "sound=intermission" \
+    https://api.pushover.net/1/messages.json || true
+fi
+exit 0

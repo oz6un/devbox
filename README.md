@@ -97,7 +97,8 @@ Optional: enable **Tailscale Serve** on your tailnet for HTTPS preview URLs — 
 - **`claude` in any repo** pushes to your phone only when it's genuinely waiting on you — idle
   after handing control back, or blocked on a decision — plus turn failures. It deliberately does
   *not* ping on every completed turn (that floods during autonomous multi-step work), and stays
-  quiet while you're active in tmux.
+  quiet while you're active in tmux. Codex (when `INSTALL_CODEX=1`) pushes the same way when it
+  hands a turn back — it exposes only a turn-complete event, but that's its genuine "over to you" moment.
 
 ## Rebuild and teardown
 
