@@ -5,3 +5,13 @@ Host devbox
 	ControlMaster auto
 	ControlPath ~/.ssh/cm-%r@%h:%p
 	ControlPersist 10m
+	# Browser-OAuth CLI logins on the box redirect to a localhost callback port;
+	# forwarding that port lets the login complete over the tunnel. The two
+	# agents use fixed ports, pre-forwarded here so their logins just work:
+	LocalForward 54545 localhost:54545   # Claude Code OAuth callback
+	LocalForward 1455 localhost:1455     # Codex OAuth callback
+	# Any other tool: add its port to the LIVE connection (no reconnect) with
+	#   ssh -O forward -L <port>:localhost:<port> devbox
+	# and remove it with `ssh -O cancel -L <port>:localhost:<port> devbox`.
+	# Prefer a device-code / --no-browser / token flow when the tool offers one
+	# (gh, codex login --device-auth, claude setup-token) — no forwarding needed.

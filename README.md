@@ -80,6 +80,23 @@ and revoke `HCLOUD_TOKEN` from the Hetzner console once you're done provisioning
 
 Optional: enable **Tailscale Serve** on your tailnet for HTTPS preview URLs — nothing here depends on it.
 
+### Logging into other tools later
+
+Some CLIs do browser OAuth by opening a `localhost:<port>` callback that the browser must reach —
+which fails on a headless box. Two ways to handle it, easiest first:
+
+- **Prefer a device-code / token flow** when the tool offers one (no forwarding): `gh auth login`,
+  `codex login --device-auth`, `gcloud auth login --no-launch-browser`, `claude setup-token` (on
+  your laptop, then export the token on the box).
+- **Otherwise forward the callback port.** The two agents' fixed ports (Claude `54545`, Codex `1455`)
+  are already forwarded by the ssh-config block above, so their logins just work. For any other tool,
+  add its port to the *live* `ssh devbox` connection with no reconnect:
+  ```sh
+  ssh -O forward -L 8976:localhost:8976 devbox   # 8976 = the port the tool prints
+  # …do the login, then:
+  ssh -O cancel  -L 8976:localhost:8976 devbox
+  ```
+
 ## Daily use
 
 - **`ssh devbox`** lands you in fish inside a persistent tmux session. Detach with `Ctrl-b d`,
