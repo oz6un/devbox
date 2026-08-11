@@ -64,6 +64,18 @@ if [ "$(cat "$S/install-codex" 2>/dev/null)" = 1 ]; then
   command -v bwrap >/dev/null \
     || sudo DEBIAN_FRONTEND=noninteractive apt-get -yq install bubblewrap >/dev/null 2>&1 \
     || echo "WARN: bubblewrap install failed (codex falls back to a bundled copy)"
+  # Phone notifications (same Pushover pipe as Claude): Codex calls a `notify`
+  # program on agent-turn-complete. Wire it via config.toml's root `notify` key,
+  # which per TOML must precede any [tables] — so prepend it; idempotent.
+  install -m 700 "$S/codex-notify" ~/.local/bin/codex-notify
+  mkdir -p ~/.codex
+  if ! grep -q '^notify' ~/.codex/config.toml 2>/dev/null; then
+    if [ -f ~/.codex/config.toml ]; then
+      sed -i "1i notify = [\"$HOME/.local/bin/codex-notify\"]" ~/.codex/config.toml
+    else
+      echo "notify = [\"$HOME/.local/bin/codex-notify\"]" > ~/.codex/config.toml
+    fi
+  fi
 fi
 
 echo "== git identity =="
