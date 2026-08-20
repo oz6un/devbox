@@ -8,7 +8,7 @@ manage, wired for Claude Code — and rebuild the whole thing from this repo in 
 
 - **Tailnet-only.** Zero public TCP ports. Access is Tailscale SSH: your tailnet identity is the credential.
 - **Hardened and self-maintaining.** UFW default-deny, key-only sshd, automatic security patches with a nightly reboot window.
-- **Ready for development.** fish + starship, persistent tmux, Node/pnpm, Docker, Claude Code with configurable skills and phone notifications (and OpenAI Codex CLI, optional).
+- **Ready for development.** fish + starship, persistent tmux, Node/pnpm, Docker, Claude Code with configurable skills and phone notifications (and OpenAI Codex CLI + Moonshot Kimi Code CLI, both optional — all three notify the same presence-aware way).
 - **Instant previews.** `http://devbox:<port>` reaches any dev server or container on the box — even one bound to localhost.
 
 ```mermaid
@@ -73,6 +73,7 @@ Three logins happen in your browser and can't be scripted. Do them once per box:
 | `gh auth login` | on devbox | GitHub device flow — gives the box its own revocable token |
 | `claude` → login | on devbox | Claude subscription OAuth |
 | `codex login` → login | on devbox | OpenAI ChatGPT OAuth — only if `INSTALL_CODEX=1` |
+| `kimi login` | on devbox | Kimi device-code flow (prints a URL + code) — only if `INSTALL_KIMI=1`. Re-run `make setup` afterward to wire its notifications |
 | Disable key expiry | [Tailscale admin](https://login.tailscale.com/admin/machines) → devbox → ⋯ | Keeps the node key (and thus SSH) from expiring in ~180 days |
 
 Set up the Pushover app and account to receive notifications (keys go in `secrets.env`),
@@ -116,6 +117,7 @@ which fails on a headless box. Two ways to handle it, easiest first:
   *not* ping on every completed turn (that floods during autonomous multi-step work), and stays
   quiet while you're active in tmux. Codex (when `INSTALL_CODEX=1`) pushes the same way when it
   hands a turn back — it exposes only a turn-complete event, but that's its genuine "over to you" moment.
+  Kimi (when `INSTALL_KIMI=1`) pushes on its `Stop` hook — the same hand-back moment — plus `StopFailure`.
 
 ## Rebuild and teardown
 

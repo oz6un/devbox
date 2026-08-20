@@ -78,6 +78,42 @@ if [ "$(cat "$S/install-codex" 2>/dev/null)" = 1 ]; then
   fi
 fi
 
+# Optional: Moonshot Kimi Code CLI (K3). Node-independent installer from the
+# GLOBAL mirror (code.kimi.ai => region "global"; code.kimi.com is mainland-CN
+# and would point login at the wrong OAuth host). Auth is a one-time `kimi login`
+# (RFC 8628 device-code flow — headless-friendly, no localhost callback port).
+if [ "$(cat "$S/install-kimi" 2>/dev/null)" = 1 ]; then
+  echo "== kimi code cli (optional) =="
+  # KIMI_NO_MODIFY_PATH: config.fish owns PATH (it adds ~/.kimi-code/bin when
+  # present), so the installer must not append its own line — a config.fish
+  # re-copy on the next setup would drop it while the install guard skips a
+  # reinstall, silently losing `kimi` from PATH.
+  [ -x ~/.kimi-code/bin/kimi ] \
+    || curl -fsSL https://code.kimi.ai/kimi-code/install.sh | KIMI_NO_MODIFY_PATH=1 bash >/dev/null 2>&1 \
+    || echo "WARN: kimi install failed"
+  install -m 700 "$S/kimi-notify" ~/.local/bin/kimi-notify
+  # Phone notifications: Stop (turn hand-back) + StopFailure -> Pushover, the same
+  # pipe as Claude/Codex. ~/.kimi-code/config.toml is written by `kimi login`, so
+  # it may not exist until that one-time auth — inject only when it's present and
+  # not already wired (idempotent; overwriting it would drop default_model +
+  # providers => "No model configured"). Re-run `make setup` after `kimi login`.
+  if [ -f ~/.kimi-code/config.toml ] && ! grep -q 'kimi-notify' ~/.kimi-code/config.toml; then
+    cat >> ~/.kimi-code/config.toml <<EOF
+
+# Phone notifications (managed by devbox setup; do not duplicate).
+[[hooks]]
+event = "Stop"
+command = "$HOME/.local/bin/kimi-notify"
+
+[[hooks]]
+event = "StopFailure"
+command = "$HOME/.local/bin/kimi-notify"
+EOF
+  elif [ ! -f ~/.kimi-code/config.toml ]; then
+    echo "   note: run \`kimi login\`, then re-run make setup to wire notifications"
+  fi
+fi
+
 echo "== git identity =="
 # Identity arrives as files (see setup-user.sh) so no quoting layer ever parses it.
 GIT_NAME=$(cat "$S/git-name" 2>/dev/null || true)

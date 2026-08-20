@@ -40,13 +40,17 @@ sed -e "s|__PUSHOVER_TOKEN__|${PUSHOVER_TOKEN:-}|g" \
 sed -e "s|__PUSHOVER_TOKEN__|${PUSHOVER_TOKEN:-}|g" \
     -e "s|__PUSHOVER_USER__|${PUSHOVER_USER:-}|g" \
     files/codex-notify.tmpl > "$staging/codex-notify"
+sed -e "s|__PUSHOVER_TOKEN__|${PUSHOVER_TOKEN:-}|g" \
+    -e "s|__PUSHOVER_USER__|${PUSHOVER_USER:-}|g" \
+    files/kimi-notify.tmpl > "$staging/kimi-notify"
 sed -e "s|__DEVBOX_NAME__|$DEVBOX_NAME|g" files/vite-hosts.fish > "$staging/vite-hosts.fish"
 sed -e "s|__DEV_USER__|$DEV_USER|g" files/claude-settings.json > "$staging/claude-settings.json"
 printf '%s' "${GIT_NAME:-}" > "$staging/git-name"
 printf '%s' "${GIT_EMAIL:-}" > "$staging/git-email"
 echo "${CLAUDE_SKILLS:-}" | tr ' \t' '\n' | grep -v '^$' > "$staging/claude-skills" || true
-# Normalize the codex opt-in to 0/1 for the remote script.
+# Normalize the codex/kimi opt-ins to 0/1 for the remote script.
 case "${INSTALL_CODEX:-0}" in 1|true|yes|on) echo 1 ;; *) echo 0 ;; esac > "$staging/install-codex"
+case "${INSTALL_KIMI:-0}" in 1|true|yes|on) echo 1 ;; *) echo 0 ;; esac > "$staging/install-kimi"
 
 # COPYFILE_DISABLE stops macOS bsdtar from embedding AppleDouble (._*) junk.
 COPYFILE_DISABLE=1 tar czf - -C "$staging" . | ssh "$DEV_USER@$DEVBOX_NAME" \
