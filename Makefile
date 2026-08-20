@@ -1,5 +1,6 @@
 SCRIPTS = preflight.sh provision.sh setup-user.sh sync-code.sh destroy.sh \
-          files/remote-setup.sh files/claude-notify.tmpl files/codex-notify.tmpl
+          files/remote-setup.sh files/claude-notify.tmpl files/codex-notify.tmpl \
+          files/kimi-notify.tmpl
 
 .PHONY: check residue preflight provision setup sync all destroy
 

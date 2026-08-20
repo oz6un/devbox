@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Kimi Code CLI hook -> Pushover push notifications. Hook JSON on stdin.
+# Wired via [[hooks]] in ~/.kimi-code/config.toml for the Stop and StopFailure
+# events (see remote-setup.sh). Stop fires ONCE when Kimi hands the turn back to
+# you — the genuine "over to you" moment: Kimi has no idle/needs-input event, and
+# Stop fires per hand-back, not per intermediate tool call (confirmed by
+# capturing a real payload, which carries only hook_event_name/session_id/cwd).
+# StopFailure fires when the turn dies on an error. Nothing per-tool is hooked,
+# so normal use won't flood — an autonomous multi-turn run pings per hand-back
+# (narrow to PermissionRequest if that ever gets noisy).
+# The push is backgrounded (setsid): Kimi awaits the hook and has no async flag,
+# so returning immediately keeps turn hand-back snappy. Presence-suppressed while
+# you're active in tmux, exactly like the Claude/Codex hooks.
+# Rendered from kimi-notify.tmpl by setup-user.sh (placeholders from secrets.env).
+PO_TOKEN="__PUSHOVER_TOKEN__"
+PO_USER="__PUSHOVER_USER__"
+PRESENCE_WINDOW=60
+
+payload=$(cat 2>/dev/null)
+[ -z "$payload" ] && exit 0
+event=$(jq -r '.hook_event_name // empty' <<<"$payload" 2>/dev/null)
+proj=$(basename "$(jq -r '.cwd // "?"' <<<"$payload" 2>/dev/null)")
+
+case "$event" in
+  Stop)
+    title="Kimi · $proj"
+    body="Turn complete — over to you"
+    sound=intermission ;;
+  StopFailure)
+    title="Kimi turn FAILED · $proj"
+    body="The turn ended on an error. Check the session."
+    sound=siren ;;
+  *) exit 0 ;;
+esac
+
+# Presence check: if a tmux client on this session saw input in the last
+# $PRESENCE_WINDOW seconds, you're at the terminal — stay quiet.
+if [ -n "$TMUX" ] && command -v tmux >/dev/null 2>&1; then
+  sess=$(tmux display-message -p '#{session_name}' 2>/dev/null)
+  last=$(tmux list-clients -t "$sess" -F '#{client_activity}' 2>/dev/null | sort -rn | head -1)
+  if [ -n "$last" ] && [ $(( $(date +%s) - last )) -lt "$PRESENCE_WINDOW" ]; then
+    exit 0
+  fi
+fi
+
+# The split literal keeps the render sed from rewriting this guard: a naive
+# "__PUSHOVER_TOKEN__" here would be replaced by the real token, making the
+# comparison always-false and silently killing every notification.
+if [ -n "$PO_TOKEN" ] && [ "$PO_TOKEN" != "__PUSHOVER""_TOKEN__" ]; then
+  setsid curl -s -o /dev/null --max-time 5 \
+    --form-string "token=$PO_TOKEN" --form-string "user=$PO_USER" \
+    --form-string "title=$title" --form-string "message=$body" \
+    --form-string "priority=1" --form-string "sound=$sound" \
+    https://api.pushover.net/1/messages.json </dev/null >/dev/null 2>&1 &
+fi
+exit 0

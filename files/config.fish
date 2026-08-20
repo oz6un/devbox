@@ -1,5 +1,8 @@
 set -g fish_greeting ""
 fish_add_path $HOME/.local/bin
+# Kimi Code CLI installs here; add it only when present (see remote-setup.sh,
+# which installs with KIMI_NO_MODIFY_PATH=1 so this file is the single owner).
+test -d $HOME/.kimi-code/bin; and fish_add_path $HOME/.kimi-code/bin
 
 if status is-interactive
     starship init fish | source
