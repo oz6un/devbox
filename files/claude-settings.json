@@ -2,6 +2,11 @@
   "tui": "fullscreen",
   "theme": "dark",
   "skipDangerousModePermissionPrompt": true,
+  "includeCoAuthoredBy": false,
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "hooks": {
     "Notification": [
       {
